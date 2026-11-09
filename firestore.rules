@@ -1,0 +1,64 @@
+rules_version = '2';
+// قواعد حماية Aqeq League — انسخيها كاملة في Firebase → Firestore Database → Rules
+// مهم: ضعي UID حسابك مكان PUT_ADMIN_UID_HERE
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null && request.auth.uid == 'PUT_ADMIN_UID_HERE';
+    }
+
+    function player(id) {
+      return get(/databases/$(database)/documents/players/$(id)).data;
+    }
+
+    function validPlayer(d) {
+      return d.keys().hasOnly(['name', 'desc', 'position', 'club', 'price', 'points', 'photo', 'createdAt', 'updatedAt'])
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 40
+        && d.desc is string && d.desc.size() <= 300
+        && d.position in ['gk', 'def', 'mid', 'fwd']
+        && d.club is string && d.club.size() > 0 && d.club.size() <= 40
+        && d.price is number && d.price >= 1 && d.price <= 20
+        && d.points is int && d.points >= -100 && d.points <= 9999
+        && (d.photo == null || (d.photo is string && d.photo.size() < 700000))
+        && d.createdAt is int && d.updatedAt is int;
+    }
+
+    // الأساسيون مرتّبون: حارس ثم دفاع ثم وسط ثم هجوم حسب الخطة
+    function positionsOk(f, p) {
+      return (f == '2-1-1' && p == ['gk', 'def', 'def', 'mid', 'fwd'])
+          || (f == '1-2-1' && p == ['gk', 'def', 'mid', 'mid', 'fwd'])
+          || (f == '1-1-2' && p == ['gk', 'def', 'mid', 'fwd', 'fwd']);
+    }
+
+    function validTeam(d) {
+      let s = d.starters;
+      let b = d.bench;
+      return d.keys().hasOnly(['name', 'formation', 'starters', 'bench', 'createdAt', 'updatedAt'])
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 30
+        && d.formation in ['2-1-1', '1-2-1', '1-1-2']
+        && s is list && s.size() == 5 && b is list && b.size() == 1
+        && s.concat(b).toSet().size() == 6
+        && positionsOk(d.formation, [player(s[0]).position, player(s[1]).position,
+             player(s[2]).position, player(s[3]).position, player(s[4]).position])
+        && player(s[0]).price + player(s[1]).price + player(s[2]).price
+           + player(s[3]).price + player(s[4]).price + player(b[0]).price <= 40
+        && d.createdAt is int && d.updatedAt is int;
+    }
+
+    // اللاعبون: الكل يقرأ، والمشرفة فقط تضيف وتعدّل وتحذف
+    match /players/{id} {
+      allow read: if true;
+      allow create, update: if isAdmin() && validPlayer(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // فرق الزوار: الكل يقرأ، وكل زائر يكتب فريقه فقط، والمشرفة تحذف
+    match /teams/{uid} {
+      allow read: if true;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+                            && validTeam(request.resource.data);
+      allow delete: if isAdmin() || (request.auth != null && request.auth.uid == uid);
+    }
+  }
+}

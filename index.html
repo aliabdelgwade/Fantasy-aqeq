@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aqeq League — فانتازي مدارس العقيق</title>
+<link rel="icon" href="favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <div class="logo"><img src="logo.webp" alt="شعار مدارس العقيق"></div>
+      <div>
+        <h1>Aqeq League</h1>
+        <p>دوري العقيق للفانتازي · مدارس العقيق</p>
+      </div>
+    </div>
+    <div class="auth">
+      <button class="gbtn" id="googleBtn" hidden>
+        <svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
+        <span>الدخول بـ Google</span>
+      </button>
+      <div class="me" id="me" hidden>
+        <img id="meAvatar" alt="" referrerpolicy="no-referrer">
+        <span id="meName"></span>
+        <span class="admin-chip" id="adminChip" hidden>👑 المشرف</span>
+        <button class="link" id="logoutBtn">خروج</button>
+      </div>
+    </div>
+  </div>
+</header>
+<div class="stripes"><i></i><i></i><i></i><i></i></div>
+<div class="setup" id="setupMsg" hidden></div>
+
+<div class="wrap">
+  <nav class="tabs">
+    <button class="tab active" data-tab="pick">اختيار الفريق</button>
+    <button class="tab" data-tab="table">ترتيب الدوري</button>
+  </nav>
+
+  <!-- ====== اختيار الفريق ====== -->
+  <section id="tab-pick" class="layout">
+    <div class="panel builder">
+      <div class="stats">
+        <div class="stat"><b id="sBudget">$40.0</b><span>الميزانية المتبقية</span></div>
+        <div class="stat"><b id="sCount">0/6</b><span>اللاعبون</span></div>
+        <div class="stat"><b id="sPoints">0</b><span>نقاط الأساسيين</span></div>
+      </div>
+      <div class="controls">
+        <input type="text" id="teamName" maxlength="30" placeholder="اسم فريقك">
+        <select id="formation" aria-label="الخطة"></select>
+      </div>
+
+      <div class="pitch" id="pitch">
+        <div class="lines"><i class="box"></i><i class="small"></i><i class="mid"></i><i class="circle"></i></div>
+        <div class="rows" id="rows"></div>
+      </div>
+
+      <div class="bench">
+        <div class="bench-title">الدكة (بديل واحد)</div>
+        <div class="bench-slots" id="benchSlots"></div>
+      </div>
+
+      <div class="actions">
+        <button class="btn primary" id="saveTeam">حفظ الفريق</button>
+        <button class="btn ghost" id="resetTeam">إعادة تعيين</button>
+      </div>
+      <p class="hint" id="rulesHint"></p>
+    </div>
+
+    <div class="panel players">
+      <div class="players-head">
+        <div class="filters" id="filters">
+          <button class="f active" data-pos="all">الكل</button>
+          <button class="f" data-pos="gk">حراس</button>
+          <button class="f" data-pos="def">مدافعون</button>
+          <button class="f" data-pos="mid">وسط</button>
+          <button class="f" data-pos="fwd">مهاجمون</button>
+        </div>
+        <button class="btn add" id="addPlayer" hidden>+ إضافة لاعب</button>
+      </div>
+      <input type="search" id="search" class="search" placeholder="ابحث عن لاعب أو فريق…">
+      <div class="plist" id="plist"></div>
+    </div>
+  </section>
+
+  <!-- ====== ترتيب الدوري ====== -->
+  <section id="tab-table" class="panel table-panel" hidden>
+    <h2>ترتيب الدوري</h2>
+    <div id="standings"></div>
+  </section>
+</div>
+
+<footer>
+  © Aqeq League — مدارس العقيق · أهلي - دولي
+</footer>
+
+
+<!-- نافذة إضافة / تعديل لاعب -->
+<div class="overlay" id="playerModal">
+  <form class="modal" id="playerForm" novalidate>
+    <div class="m-head"><h3 id="pfTitle">إضافة لاعب</h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body">
+      <label>صورة اللاعب</label>
+      <div class="upload">
+        <div class="prev" id="pfPrev">بدون صورة</div>
+        <div class="upload-btns">
+          <input type="file" id="pfFile" accept="image/*" hidden>
+          <button type="button" class="btn ghost sm" id="pfPick">رفع صورة من الجهاز</button>
+          <button type="button" class="btn ghost sm" id="pfClear" hidden>إزالة الصورة</button>
+        </div>
+      </div>
+      <label for="pfName">اسم اللاعب *</label>
+      <input type="text" id="pfName" maxlength="40">
+      <label for="pfDesc">وصف اللاعب أو صفته</label>
+      <textarea id="pfDesc" maxlength="300" placeholder="مثال: سريع، مهاري، قائد الفريق"></textarea>
+      <div class="grid2">
+        <div>
+          <label for="pfPos">المركز *</label>
+          <select id="pfPos">
+            <option value="gk">حارس</option><option value="def">مدافع</option>
+            <option value="mid">وسط</option><option value="fwd">مهاجم</option>
+          </select>
+        </div>
+        <div>
+          <label for="pfClub">الفريق الذي يلعب معه *</label>
+          <input type="text" id="pfClub" maxlength="40" placeholder="مثال: الصف الثالث - أ">
+        </div>
+        <div>
+          <label for="pfPrice">السعر ($) *</label>
+          <input type="number" id="pfPrice" min="1" max="20" step="0.5" value="6">
+        </div>
+        <div>
+          <label for="pfPoints">النقاط</label>
+          <input type="number" id="pfPoints" min="-100" max="9999" step="1" value="0">
+        </div>
+      </div>
+      <div class="err" id="pfErr"></div>
+      <div class="actions">
+        <button class="btn primary" type="submit" id="pfSave">حفظ اللاعب</button>
+        <button class="btn danger" type="button" id="pfDelete" hidden>حذف اللاعب</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- نافذة بطاقة لاعب -->
+<div class="overlay" id="infoModal">
+  <div class="modal">
+    <div class="m-head"><h3>بطاقة اللاعب</h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body" id="infoBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
