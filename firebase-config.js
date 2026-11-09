@@ -2,12 +2,12 @@
 //  إعدادات Firebase — الصقي هنا بيانات مشروعك (راجعي README)
 // ============================================================
 export const firebaseConfig = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: "",
+  apiKey: "AIzaSyB8TtzTlGqCZnZ7V2VzIEs069J_xWNeSrg",
+  authDomain: "fantasy-aqeq.firebaseapp.com",
+  projectId: "fantasy-aqeq",
+  storageBucket: "fantasy-aqeq.firebasestorage.app",
+  messagingSenderId: "989847611026",
+  appId: "1:989847611026:web:42f648801b55690aede84b",
 };
 
 // معرّف حساب المشرفة (User UID) من Firebase → Authentication → Users
