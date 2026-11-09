@@ -40,6 +40,7 @@
   <nav class="tabs">
     <button class="tab active" data-tab="pick">اختيار الفريق</button>
     <button class="tab" data-tab="table">ترتيب الدوري</button>
+    <button class="gw-btn" id="gwAdmin" type="button" hidden>⚙️ إدارة الجولات</button>
   </nav>
 
   <!-- ====== اختيار الفريق ====== -->
@@ -48,8 +49,10 @@
       <div class="stats">
         <div class="stat"><b id="sBudget">$40.0</b><span>الميزانية المتبقية</span></div>
         <div class="stat"><b id="sCount">0/6</b><span>اللاعبون</span></div>
-        <div class="stat"><b id="sPoints">0</b><span>نقاط الأساسيين</span></div>
+        <div class="stat"><b id="sPoints">0</b><span>مجموع نقاطي</span></div>
       </div>
+      <div class="gwbar" id="gwBar"></div>
+      <div class="tinfo" id="tInfo"></div>
       <div class="controls">
         <input type="text" id="teamName" maxlength="30" placeholder="اسم فريقك">
         <select id="formation" aria-label="الخطة"></select>
@@ -64,6 +67,8 @@
         <div class="bench-title">الدكة (بديل واحد)</div>
         <div class="bench-slots" id="benchSlots"></div>
       </div>
+
+      <div class="chips-wrap"><div class="bench-title">الرقائق (لجولة واحدة فقط)</div><div class="chips" id="chips"></div></div>
 
       <div class="actions">
         <button class="btn primary" id="saveTeam">حفظ الفريق</button>
@@ -132,7 +137,7 @@
         </div>
         <div>
           <label for="pfPrice">السعر ($) *</label>
-          <input type="number" id="pfPrice" min="1" max="20" step="0.5" value="6">
+          <input type="number" id="pfPrice" min="1" max="20" step="0.1" value="6">
         </div>
         <div>
           <label for="pfPoints">النقاط (تلقائي)</label>
@@ -203,6 +208,31 @@
       <div class="actions"><button class="btn primary" type="submit">+ إضافة</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>
     </div>
   </form>
+</div>
+
+<!-- إدارة الجولات (للمشرف) -->
+<div class="overlay" id="gwModal" role="dialog" aria-modal="true">
+  <form class="modal" id="gwForm" novalidate>
+    <div class="m-head"><h3>إدارة الجولات</h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body">
+      <div id="gwList"></div>
+      <div class="grid2">
+        <div><label for="gwNum">رقم الجولة</label><input type="number" id="gwNum" min="1" max="99" inputmode="numeric"></div>
+        <div><label for="gwDeadline">الموعد النهائي</label><input type="datetime-local" id="gwDeadline"></div>
+      </div>
+      <p class="hint">رقم الجولة هو نفسه رقم الجولة في نتائج المباريات. بعد انتهاء الموعد تُقفل التشكيلات تلقائيًا. بعد إدخال كل نتائج الجولة اضغط "إنهاء الجولة" ثم "تحديث الأسعار".</p>
+      <div class="err" id="gwErr"></div>
+      <div class="actions"><button class="btn primary" type="submit">حفظ الجولة / الموعد</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>
+    </div>
+  </form>
+</div>
+
+<!-- تفاصيل فريق -->
+<div class="overlay" id="teamModal" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="m-head"><h3 id="tmTitle"></h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body" id="teamBody"></div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>

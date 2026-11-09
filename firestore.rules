@@ -34,18 +34,36 @@ service cloud.firestore {
     }
 
     function validTeam(d) {
+      return d.keys().hasOnly(['name', 'createdAt', 'updatedAt'])
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 30
+        && d.createdAt is int && d.updatedAt is int;
+    }
+
+    function validGw(d) {
+      return d.keys().hasOnly(['n', 'name', 'deadline', 'final', 'pricesApplied'])
+        && d.n is int && d.n >= 1 && d.n <= 99
+        && d.deadline is int && d.final is bool
+        && (!('pricesApplied' in d) || d.pricesApplied is bool)
+        && (!('name' in d) || (d.name is string && d.name.size() <= 40));
+    }
+
+    // الجولة مفتوحة للتعديل ما دام الموعد النهائي لم يأتِ
+    function gwOpen(gw) {
+      return get(/databases/$(database)/documents/gameweeks/$(gw)).data.deadline > request.time.toMillis();
+    }
+
+    function validPick(d) {
       let s = d.starters;
       let b = d.bench;
-      return d.keys().hasOnly(['name', 'formation', 'starters', 'bench', 'createdAt', 'updatedAt'])
-        && d.name is string && d.name.size() > 0 && d.name.size() <= 30
+      return d.keys().hasOnly(['formation', 'starters', 'bench', 'captain', 'vice', 'chip', 'updatedAt'])
         && d.formation in ['2-1-1', '1-2-1', '1-1-2']
         && s is list && s.size() == 5 && b is list && b.size() == 1
         && s.concat(b).toSet().size() == 6
+        && d.captain in s && d.vice in s && d.captain != d.vice
+        && (d.chip == null || d.chip in ['wc', 'fh', 'bb', 'tc'])
         && positionsOk(d.formation, [player(s[0]).position, player(s[1]).position,
              player(s[2]).position, player(s[3]).position, player(s[4]).position])
-        && player(s[0]).price + player(s[1]).price + player(s[2]).price
-           + player(s[3]).price + player(s[4]).price + player(b[0]).price <= 40
-        && d.createdAt is int && d.updatedAt is int;
+        && d.updatedAt is int;
     }
 
     // اللاعبون: الكل يقرأ، والمشرفة فقط تضيف وتعدّل وتحذف
@@ -55,12 +73,27 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // فرق الزوار: الكل يقرأ، وكل زائر يكتب فريقه فقط، والمشرفة تحذف
+    // فرق الزوار (الاسم فقط): الكل يقرأ، وكل زائر يكتب فريقه فقط، والمشرفة تحذف
     match /teams/{uid} {
       allow read: if true;
       allow create, update: if request.auth != null && request.auth.uid == uid
                             && validTeam(request.resource.data);
       allow delete: if isAdmin() || (request.auth != null && request.auth.uid == uid);
+    }
+
+    // الجولات: الكل يقرأ، والمشرفة فقط تنشئ وتعدّل
+    match /gameweeks/{gw} {
+      allow read: if true;
+      allow create, update: if isAdmin() && validGw(request.resource.data);
+      allow delete: if isAdmin();
+
+      // اختيارات الفرق في الجولة: يقفلها الموعد النهائي تلقائيًا
+      match /picks/{uid} {
+        allow read: if true;
+        allow create, update: if request.auth != null && request.auth.uid == uid
+                              && gwOpen(gw) && validPick(request.resource.data);
+        allow delete: if isAdmin() || (request.auth != null && request.auth.uid == uid && gwOpen(gw));
+      }
     }
   }
 }

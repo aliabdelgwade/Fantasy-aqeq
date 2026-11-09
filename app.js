@@ -8,6 +8,10 @@ import {
   getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, query, orderBy,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
+import {
+  SC, num, breakdown, sumObj, matchPts, totalPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT,
+} from './game.js';
+
 const POS = {
   gk: { one: 'حارس', many: 'حراس', slot: 'حارس' },
   def: { one: 'مدافع', many: 'مدافعون', slot: 'مدافعون' },
@@ -24,6 +28,8 @@ const S = {
   rules: null, admin: false, players: [], byId: new Map(),
   formation: '2-1-1', slots: {}, bench: [], filter: 'all', query: '', target: null,
   uid: null, hasTeam: false, db: null, auth: null, profile: null, sel: null,
+  gws: [], openGw: null, allPicks: {}, teams: new Map(), picksT: 0, base: null, used: { wc: 0, fh: 0, bb: 0, tc: 0 }, ft: 1,
+  captain: null, vice: null, chip: null, loadedFor: null,
 };
 
 // ---------- أدوات ----------
@@ -66,11 +72,13 @@ function emptySlots(formation) {
 const picked = () => [...ORDER.flatMap((k) => S.slots[k]), ...S.bench].filter(Boolean);
 const isPicked = (id) => picked().includes(id);
 const cost = () => picked().reduce((s, id) => s + (S.byId.get(id)?.price || 0), 0);
+const squadValue = (ids) => ids.reduce((s, id) => s + (S.byId.get(id)?.price || 0), 0);
+const budgetCap = () => (S.base ? Math.max(S.rules.budget, squadValue(S.base.squad)) : S.rules.budget);
 const totalSlots = () => S.rules.starters + S.rules.bench;
 const clubCount = (club) => picked().filter((id) => S.byId.get(id)?.club === club).length;
 
 function canAfford(p) {
-  if (cost() + p.price > S.rules.budget + 1e-9) { toast('الميزانية لا تكفي لهذا اللاعب', true); return false; }
+  if (cost() + p.price > budgetCap() + 1e-9) { toast('الميزانية لا تكفي لهذا اللاعب', true); return false; }
   if (clubCount(p.club) >= S.rules.maxPerClub) { toast(`الحد الأقصى ${S.rules.maxPerClub} لاعبين من ${p.club}`, true); return false; }
   return true;
 }
@@ -99,6 +107,8 @@ function addToTeam(id) {
 function removeFromTeam(id) {
   ORDER.forEach((k) => { S.slots[k] = S.slots[k].map((x) => (x === id ? null : x)); });
   S.bench = S.bench.map((x) => (x === id ? null : x));
+  if (S.captain === id) S.captain = null;
+  if (S.vice === id) S.vice = null;
   renderTeam(); renderList();
 }
 function setFormation(f) {
@@ -124,13 +134,15 @@ function applyTeam(t) {
     const i = S.slots[p.position]?.indexOf(null); if (i >= 0) S.slots[p.position][i] = id;
   });
   t.bench.forEach((id, i) => { if (S.byId.get(id) && i < S.bench.length) S.bench[i] = id; });
-  $('#teamName').value = t.name || '';
+  S.captain = t.captain && S.byId.has(t.captain) ? t.captain : null;
+  S.vice = t.vice && S.byId.has(t.vice) ? t.vice : null;
   $('#formation').value = S.formation;
 }
 
 // ---------- رسم الملعب ----------
 function slotEl(id, pos, i, label) {
   const p = id ? S.byId.get(id) : null;
+  const wrap = el('div', 'sw');
   const b = el('button', 'slot ' + (p ? 'filled' : 'empty')); b.type = 'button';
   if (p) {
     b.appendChild(avatar(p, 'pic'));
@@ -138,6 +150,15 @@ function slotEl(id, pos, i, label) {
     b.appendChild(el('div', 'sub', `${money(p.price)} · ${p.points}`));
     b.title = 'اضغط لإزالة اللاعب';
     b.onclick = () => removeFromTeam(id);
+    wrap.appendChild(b);
+    if (pos !== 'bench') {
+      const cv = el('div', 'cv');
+      const c = el('button', 'cvb' + (S.captain === id ? ' on cap' : ''), 'C'); c.type = 'button'; c.title = 'كابتن (نقاطه ×2)';
+      const v = el('button', 'cvb' + (S.vice === id ? ' on' : ''), 'V'); v.type = 'button'; v.title = 'نائب الكابتن';
+      c.onclick = () => { if (S.vice === id) S.vice = null; S.captain = S.captain === id ? null : id; renderTeam(); };
+      v.onclick = () => { if (S.captain === id) S.captain = null; S.vice = S.vice === id ? null : id; renderTeam(); };
+      cv.append(c, v); wrap.appendChild(cv);
+    }
   } else {
     if (S.target && S.target.pos === pos && S.target.i === i) b.classList.add('target');
     b.appendChild(el('div', 'pic', '+'));
@@ -149,10 +170,25 @@ function slotEl(id, pos, i, label) {
       renderTeam();
       if (window.innerWidth < 900) $('.players').scrollIntoView({ behavior: 'smooth' });
     };
+    wrap.appendChild(b);
   }
-  return b;
+  return wrap;
+}
+
+// معلومات التحويلات للجولة المفتوحة (تتحدث مع كل تغيير)
+function transferInfo() {
+  const squad = picked();
+  const prev = S.base ? S.base.squad : null;
+  const t = prev ? squad.filter((id) => !prev.includes(id)).length : 0;
+  const free = !prev || S.chip === 'wc' || S.chip === 'fh';
+  const hit = free ? 0 : Math.max(0, t - S.ft) * HIT;
+  return { t, free, hit, ft: S.ft, prev };
 }
 function renderTeam() {
+  // الكابتن والنائب لازم يكونوا من الأساسيين
+  const st = ORDER.flatMap((k) => S.slots[k]);
+  if (S.captain && !st.includes(S.captain)) S.captain = null;
+  if (S.vice && !st.includes(S.vice)) S.vice = null;
   const rows = $('#rows'); rows.innerHTML = '';
   ORDER.forEach((k) => {
     const row = el('div', 'row');
@@ -162,12 +198,25 @@ function renderTeam() {
   const bench = $('#benchSlots'); bench.innerHTML = '';
   S.bench.forEach((id, i) => bench.appendChild(slotEl(id, 'bench', i, 'بديل')));
 
-  const left = S.rules.budget - cost();
+  const left = budgetCap() - cost();
   $('#sBudget').textContent = money(left);
   $('#sBudget').classList.toggle('neg', left < 0);
   $('#sCount').textContent = `${picked().length}/${totalSlots()}`;
-  const pts = ORDER.flatMap((k) => S.slots[k]).filter(Boolean).reduce((s, id) => s + (S.byId.get(id)?.points || 0), 0);
-  $('#sPoints').textContent = pts;
+  $('#sPoints').textContent = myTotal();
+
+  const ti = $('#tInfo');
+  if (!S.openGw) { ti.textContent = ''; }
+  else {
+    const x = transferInfo();
+    ti.innerHTML = '';
+    ti.append(el('span', null, `تحويلات هذه الجولة: ${x.t}`), el('span', null, `مجانية متاحة: ${x.ft}`),
+      el('span', x.hit ? 'bad' : 'ok', x.free && x.prev ? 'بدون خصم (رقاقة)' : `الخصم: ${x.hit ? '−' + x.hit : '0'}`));
+  }
+}
+function myTotal() {
+  if (!S.uid || !S.gws.length) return 0;
+  const mine = S.allPicks[S.uid]; if (!mine) return 0;
+  return teamTotals(S.gws, mine, S.byId, S.rules.formations, Date.now()).total;
 }
 
 // ---------- قائمة اللاعبين ----------
@@ -205,36 +254,12 @@ function renderList() {
   });
 }
 // ================= نظام النقاط =================
-const SC = { goal: { gk: 6, def: 6, mid: 5, fwd: 4 }, assist: 3, cs: { gk: 4, def: 4, mid: 1, fwd: 0 }, yc: -1, rc: -3, pm: -2, og: -2 };
 const POS_PL = { gk: 'الحراس', def: 'المدافعين', mid: 'لاعبي الوسط', fwd: 'المهاجمين' };
-const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 const LBL = {
   min: 'دقائق اللعب', goals: 'الأهداف', assists: 'التمريرات الحاسمة', cs: 'الشباك النظيفة', saves: 'التصديات',
   bonus: 'نقاط البونص', yc: 'البطاقات الصفراء', rc: 'البطاقات الحمراء', pm: 'ركلات جزاء ضائعة', og: 'أهداف عكسية', gc: 'أهداف مستقبلة',
 };
 
-function breakdown(pos, m) {
-  const zero = { min: 0, goals: 0, assists: 0, cs: 0, saves: 0, bonus: 0, yc: 0, rc: 0, pm: 0, og: 0, gc: 0 };
-  const min = num(m.min);
-  if (min <= 0) return zero;
-  const ga = num(m.ga);
-  return {
-    min: min >= 11 ? 2 : 1,
-    goals: num(m.g) * SC.goal[pos],
-    assists: num(m.a) * SC.assist,
-    cs: ga === 0 ? SC.cs[pos] : 0,
-    saves: pos === 'gk' ? Math.floor(num(m.sv) / 3) : 0,
-    bonus: num(m.bo),
-    yc: num(m.yc) * SC.yc,
-    rc: num(m.rc) * SC.rc,
-    pm: num(m.pm) * SC.pm,
-    og: num(m.og) * SC.og,
-    gc: (pos === 'gk' || pos === 'def') ? -Math.floor(ga / 2) : 0,
-  };
-}
-const sumObj = (o) => Object.values(o).reduce((s, v) => s + v, 0) + 0;
-const matchPts = (pos, m) => sumObj(breakdown(pos, m));
-const totalPts = (p) => (p?.matches || []).reduce((s, m) => s + matchPts(p.position, m), 0) + 0;
 const signed = (n) => (n > 0 ? '+' + n : String(n));
 
 function pStats(p) {
@@ -255,14 +280,28 @@ function ranks(p) {
   return { n: peers.length, me, price: rank('price'), ppm: rank('ppm'), form: rank('form'), sel: rank('sel') };
 }
 async function ensureTeams() {
-  if (!S.db || (S.sel && Date.now() - S.sel.t < 60000)) return;
-  try {
-    const snap = await getDocs(collection(S.db, 'teams'));
-    const counts = {};
-    snap.docs.forEach((d) => { const t = d.data(); [...(t.starters || []), ...(t.bench || [])].forEach((id) => { counts[id] = (counts[id] || 0) + 1; }); });
-    S.sel = { t: Date.now(), total: snap.docs.length, counts };
-    if ($('#profileModal').classList.contains('open')) renderProfile();
-  } catch { /* نسبة الاختيار اختيارية */ }
+  if (!S.db) return;
+  try { await loadPicks(false); if ($('#profileModal').classList.contains('open')) renderProfile(); }
+  catch { /* نسبة الاختيار اختيارية */ }
+}
+async function loadPicks(force) {
+  if (!S.db) return;
+  if (!force && S.picksT && Date.now() - S.picksT < 30000) return;
+  const gws = S.gws.slice();
+  const [ts, ...ps] = await Promise.all([getDocs(collection(S.db, 'teams')),
+    ...gws.map((g) => getDocs(collection(S.db, 'gameweeks', String(g.n), 'picks')))]);
+  S.teams = new Map(ts.docs.map((d) => [d.id, d.data()]));
+  const all = {};
+  ps.forEach((sn, i) => sn.docs.forEach((d) => { (all[d.id] = all[d.id] || {})[gws[i].n] = d.data(); }));
+  S.allPicks = all; S.picksT = Date.now();
+  const counts = {}; let total = 0;
+  Object.keys(all).forEach((uid) => {
+    if (!S.teams.has(uid)) return;
+    const ns = Object.keys(all[uid]).map(Number); if (!ns.length) return;
+    const l = all[uid][Math.max(...ns)]; total++;
+    [...l.starters, ...l.bench].forEach((id) => { counts[id] = (counts[id] || 0) + 1; });
+  });
+  S.sel = { t: Date.now(), total, counts };
 }
 async function patchPlayer(id, patch) {
   await setDoc(doc(S.db, 'players', id), { ...patch, updatedAt: Date.now() }, { merge: true });
@@ -605,62 +644,100 @@ $('#saveTeam').onclick = async () => {
   const name = $('#teamName').value.trim();
   if (!name) { toast('اكتب اسم فريقك أولًا', true); $('#teamName').focus(); return; }
   if (picked().length < totalSlots()) { toast(`أكمل فريقك: ${S.rules.starters} أساسيين و${S.rules.bench} بديل`, true); return; }
+  if (!S.openGw) { toast('لا توجد جولة مفتوحة الآن، الموعد النهائي انتهى أو لم يحدد المشرف جولة', true); return; }
+  if (!S.captain || !S.vice) { toast('اختر الكابتن (C) والنائب (V) من الأساسيين', true); return; }
   if (!S.uid) { toast('سجّل الدخول بـ Google لحفظ فريقك'); googleLogin(); return; }
-  const body = { name, formation: S.formation, starters: ORDER.flatMap((k) => S.slots[k]), bench: S.bench };
+  if (cost() > budgetCap() + 1e-9) { toast('الفريق يتجاوز الميزانية', true); return; }
+  if (S.chip && (S.used[S.chip] || 0) >= CHIP_MAX[S.chip]) { toast('هذه الرقاقة مستخدمة بالكامل', true); return; }
+  const n = S.openGw.n;
   const btn = $('#saveTeam'); btn.disabled = true;
   try {
-    const ref = doc(S.db, 'teams', S.uid);
-    const old = await getDoc(ref);
     const now = Date.now();
-    await setDoc(ref, { ...body, createdAt: old.exists() ? old.data().createdAt : now, updatedAt: now });
-    toast(old.exists() ? 'تم تحديث فريقك ✅' : 'تم حفظ فريقك ودخوله ترتيب الدوري 🎉');
+    const old = S.teams.get(S.uid);
+    await setDoc(doc(S.db, 'teams', S.uid), { name, createdAt: old?.createdAt || now, updatedAt: now });
+    await setDoc(doc(S.db, 'gameweeks', String(n), 'picks', S.uid), {
+      formation: S.formation, starters: ORDER.flatMap((k) => S.slots[k]), bench: S.bench,
+      captain: S.captain, vice: S.vice, chip: S.chip || null, updatedAt: now,
+    });
     S.hasTeam = true;
+    await loadPicks(true); renderGwBar(); renderChips(); renderTeam();
+    toast(`تم حفظ فريقك للجولة ${n} ✅`);
   } catch (e) { toast(errText(e), true); }
   finally { btn.disabled = false; }
 };
 $('#resetTeam').onclick = () => {
   S.slots = emptySlots(S.formation); S.bench = Array(S.rules.bench).fill(null); S.target = null;
-  renderTeam(); renderList();
+  S.captain = null; S.vice = null; S.chip = null;
+  renderChips(); renderTeam(); renderList();
 };
 $('#formation').onchange = (e) => setFormation(e.target.value);
 $('#filters').onclick = (e) => { const b = e.target.closest('.f'); if (b) { S.target = null; setFilter(b.dataset.pos); renderTeam(); } };
 $('#search').oninput = (e) => { S.query = e.target.value; renderList(); };
 
 // ---------- الترتيب ----------
+const fmtDate = (ms) => new Date(ms).toLocaleString('ar-SA-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' });
+const pname = (id) => S.byId.get(id)?.name || '—';
 async function renderStandings() {
   const box = $('#standings'); box.innerHTML = '';
   box.appendChild(el('div', 'empty-msg', 'جارٍ التحميل…'));
-  let teams;
+  let rows;
   try {
-    const snap = await getDocs(collection(S.db, 'teams'));
-    teams = snap.docs.map((d) => {
-      const t = { id: d.id, ...d.data() };
-      t.points = (t.starters || []).reduce((sum, id) => sum + (S.byId.get(id)?.points || 0), 0);
-      return t;
-    }).sort((a, b) => b.points - a.points || a.createdAt - b.createdAt);
+    await loadPicks(true);
+    const now = Date.now();
+    rows = [...S.teams.entries()].map(([uid, t]) => {
+      const tt = teamTotals(S.gws, S.allPicks[uid] || {}, S.byId, S.rules.formations, now);
+      const ns = Object.keys(tt.perGw).map(Number);
+      const last = ns.length ? tt.perGw[Math.max(...ns)] : null;
+      return { uid, t, tt, last, lastN: ns.length ? Math.max(...ns) : null };
+    }).sort((a, b) => b.tt.total - a.tt.total || a.t.createdAt - b.t.createdAt);
   } catch (e) { box.innerHTML = ''; box.appendChild(el('div', 'empty-msg', errText(e))); return; }
   box.innerHTML = '';
-  if (!teams.length) { box.appendChild(el('div', 'empty-msg', 'لا توجد فرق بعد. كن أول من يحفظ فريقه!')); return; }
+  if (!rows.length) { box.appendChild(el('div', 'empty-msg', 'لا توجد فرق بعد. كن أول من يحفظ فريقه!')); return; }
   const tbl = el('table'); const head = el('tr');
-  ['#', 'الفريق', 'الخطة', 'النقاط'].forEach((h) => head.appendChild(el('th', null, h)));
+  ['#', 'الفريق', 'آخر جولة', 'المجموع'].forEach((h) => head.appendChild(el('th', null, h)));
   if (S.admin) head.appendChild(el('th', null, ''));
   tbl.appendChild(head);
-  teams.forEach((t, i) => {
-    const tr = el('tr', (S.uid === t.id ? 'mine ' : '') + (i === 0 ? 'top1' : ''));
-    tr.append(el('td', 'rank', i === 0 ? '🏆' : String(i + 1)), el('td', null, t.name + (S.uid === t.id ? ' (فريقي)' : '')),
-      el('td', null, t.formation), el('td', 'pts', String(t.points)));
+  rows.forEach((r, i) => {
+    const tr = el('tr', (S.uid === r.uid ? 'mine ' : '') + (i === 0 && r.tt.total > 0 ? 'top1' : '') + ' clickable');
+    const lastTxt = r.last ? String(r.last.net) + (r.last.chip ? ' · ' + CHIPS[r.last.chip] : '') : '—';
+    tr.append(el('td', 'rank', i === 0 && r.tt.total > 0 ? '🏆' : String(i + 1)), el('td', null, r.t.name + (S.uid === r.uid ? ' (فريقي)' : '')),
+      el('td', null, lastTxt), el('td', 'pts', String(r.tt.total)));
+    tr.onclick = () => openTeamModal(r);
     if (S.admin) {
       const td = el('td'); const d = el('button', 'del-team', 'حذف'); let armed = false;
-      d.onclick = async () => {
+      d.onclick = async (ev) => {
+        ev.stopPropagation();
         if (!armed) { armed = true; d.textContent = 'تأكيد الحذف؟'; return; }
-        try { await deleteDoc(doc(S.db, 'teams', t.id)); toast('تم حذف الفريق'); renderStandings(); }
-        catch (e) { toast(errText(e), true); }
+        try {
+          await Promise.all(S.gws.map((g) => deleteDoc(doc(S.db, 'gameweeks', String(g.n), 'picks', r.uid)).catch(() => {})));
+          await deleteDoc(doc(S.db, 'teams', r.uid)); toast('تم حذف الفريق'); renderStandings();
+        } catch (e) { toast(errText(e), true); }
       };
       td.appendChild(d); tr.appendChild(td);
     }
     tbl.appendChild(tr);
   });
   box.appendChild(tbl);
+}
+function openTeamModal(r) {
+  const body = $('#teamBody'); body.innerHTML = '';
+  $('#tmTitle').textContent = r.t.name;
+  body.appendChild(el('div', 'tm-total', `المجموع: ${r.tt.total} نقطة`));
+  const ns = Object.keys(r.tt.perGw).map(Number).sort((a, b) => b - a);
+  if (!ns.length) body.appendChild(el('div', 'empty-msg', 'لا توجد جولات منتهية الموعد بعد.'));
+  ns.forEach((n) => {
+    const g = r.tt.perGw[n]; const card = el('div', 'tm-gw');
+    card.appendChild(el('div', 'tm-h', `الجولة ${n} — ${g.net} نقطة` + (g.hit ? ` (خصم ${g.hit}−)` : '') + (g.chip ? ` · ${CHIPS[g.chip]}` : '') + (g.carried ? ' · لم يحفظ تغييرًا' : '')));
+    g.score.items.forEach((it) => {
+      const line = el('div', 'tm-p' + (it.played ? '' : ' dim'));
+      line.append(el('span', null, pname(it.id) + (g.score.captain === it.id ? (g.chip === 'tc' ? ' (TC)' : ' (C)') : '')), el('b', null, String(it.pts)));
+      card.appendChild(line);
+    });
+    g.score.subs.forEach((x) => card.appendChild(el('div', 'tm-note', `بديل تلقائي: دخل ${pname(x.in)} مكان ${pname(x.out)}`)));
+    if (g.score.benchOut.length) card.appendChild(el('div', 'tm-note', `الدكة: ${g.score.benchOut.map(pname).join('، ')} (${g.score.benchPts})`));
+    body.appendChild(card);
+  });
+  openModal('#teamModal');
 }
 document.querySelectorAll('.tab').forEach((t) => t.onclick = () => {
   document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === t));
@@ -669,10 +746,62 @@ document.querySelectorAll('.tab').forEach((t) => t.onclick = () => {
   if (!pick) renderStandings();
 });
 
+// ---------- الجولات: الشريط والرقائق ----------
+function renderGwBar() {
+  const bar = $('#gwBar'); if (!bar) return;
+  bar.innerHTML = '';
+  if (!S.gws.length) { bar.append(el('b', null, 'لم يحدد المشرف أول جولة بعد')); return; }
+  if (!S.openGw) { bar.append(el('b', null, 'لا توجد جولة مفتوحة حاليًا'), el('span', null, 'بانتظار إعلان الجولة التالية')); return; }
+  const left = S.openGw.deadline - Date.now();
+  const d = Math.floor(left / 864e5), h = Math.floor(left % 864e5 / 36e5), m = Math.floor(left % 36e5 / 6e4), sec = Math.floor(left % 6e4 / 1000);
+  const p2 = (x) => String(x).padStart(2, '0');
+  bar.append(el('b', null, `الجولة ${S.openGw.n}`), el('span', null, `الموعد النهائي: ${fmtDate(S.openGw.deadline)}`),
+    el('span', 'cd', `يتبقى ${d ? d + ' يوم ' : ''}${p2(h)}:${p2(m)}:${p2(sec)}`));
+}
+function renderChips() {
+  const box = $('#chips'); if (!box) return;
+  box.innerHTML = '';
+  const names = { wc: 'Wildcard', fh: 'Free Hit', bb: 'Bench Boost', tc: 'Triple Captain' };
+  const tips = { wc: 'تحويلات غير محدودة بدون خصم، وتبقى للفريق', fh: 'تحويلات غير محدودة لهذه الجولة فقط ثم يرجع فريقك', bb: 'نقاط الدكة تُحسب مع الأساسيين', tc: 'الكابتن ×3 بدل ×2' };
+  Object.keys(CHIP_MAX).forEach((k) => {
+    const left = CHIP_MAX[k] - (S.used[k] || 0);
+    const b = el('button', 'chip' + (S.chip === k ? ' on' : ''), `${names[k]} (${left})`); b.type = 'button'; b.title = tips[k];
+    b.disabled = !S.openGw || left <= 0;
+    b.onclick = () => { S.chip = S.chip === k ? null : k; renderChips(); renderTeam(); };
+    box.appendChild(b);
+  });
+}
+function computeBase() {
+  const prev = S.gws.filter((g) => !S.openGw || g.n < S.openGw.n);
+  const tl = timeline(prev, (S.uid && S.allPicks[S.uid]) || {});
+  S.base = tl.base; S.used = tl.used; S.ft = tl.ft;
+}
+async function refreshGame(force) {
+  const old = S.openGw && S.openGw.n;
+  S.openGw = S.gws.find((g) => g.deadline > Date.now()) || null;
+  try { await loadPicks(!!force); } catch { /* الاتصال */ }
+  computeBase();
+  // تحميل فريقي في المنشئ مرة واحدة لكل (مستخدم + جولة)
+  const key = S.uid && S.openGw ? S.uid + ':' + S.openGw.n : null;
+  if (key && S.loadedFor !== key) {
+    S.loadedFor = key;
+    const t = S.teams.get(S.uid); if (t) { $('#teamName').value = t.name || ''; S.hasTeam = true; }
+    const mine = (S.allPicks[S.uid] || {})[S.openGw.n];
+    if (mine) { applyTeam(mine); S.chip = mine.chip || null; }
+    else if (S.base) { applyTeam(S.base.pick); S.chip = null; }
+  } else if (!key && !S.uid) S.loadedFor = null;
+  if (old && !S.openGw) toast('انتهى الموعد النهائي للجولة 🔒');
+  renderGwBar(); renderChips(); renderTeam(); renderList();
+  if ($('#gwModal').classList.contains('open')) renderGwAdmin();
+}
+setInterval(() => {
+  if (S.openGw && S.openGw.deadline <= Date.now()) refreshGame(true); else renderGwBar();
+}, 1000);
+
 // ---------- المشرف ----------
 function setAdmin(on) {
   S.admin = on;
-  $('#adminChip').hidden = !on; $('#addPlayer').hidden = !on;
+  $('#adminChip').hidden = !on; $('#addPlayer').hidden = !on; $('#gwAdmin').hidden = !on;
   renderList();
   if (S.profile && $('#profileModal').classList.contains('open')) renderProfile();
 }
@@ -700,7 +829,67 @@ $('#googleBtn').onclick = googleLogin;
 $('#logoutBtn').onclick = async () => {
   try { await signOut(S.auth); } catch { /* تجاهل */ }
   S.slots = emptySlots(S.formation); S.bench = Array(S.rules.bench).fill(null); $('#teamName').value = '';
-  renderTeam(); renderList(); toast('تم تسجيل الخروج');
+  S.captain = null; S.vice = null; S.chip = null; S.loadedFor = null; S.base = null; S.used = { wc: 0, fh: 0, bb: 0, tc: 0 }; S.ft = 1;
+  renderChips(); renderTeam(); renderList(); toast('تم تسجيل الخروج');
+};
+
+// ---------- إدارة الجولات (للمشرف) ----------
+const toLocalInput = (ms) => { const d = new Date(ms - new Date(ms).getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16); };
+function renderGwAdmin() {
+  const box = $('#gwList'); box.innerHTML = '';
+  if (!S.gws.length) box.appendChild(el('div', 'empty-msg', 'لا توجد جولات بعد. أضف الجولة 1 بالأسفل.'));
+  S.gws.forEach((g) => {
+    const row = el('div', 'gw-row');
+    const info = el('div', 'gw-info');
+    info.append(el('b', null, `الجولة ${g.n}`), el('span', null, fmtDate(g.deadline)),
+      el('span', g.final ? 'tag fin' : (g.deadline > Date.now() ? 'tag open' : 'tag lock'), g.final ? 'منتهية' : (g.deadline > Date.now() ? 'مفتوحة' : 'مقفلة')),
+      g.pricesApplied ? el('span', 'tag fin', 'تم تحديث الأسعار') : el('span'));
+    const acts = el('div', 'gw-acts');
+    const edit = el('button', 'btn ghost sm', 'تعديل الموعد');  edit.onclick = () => { $('#gwNum').value = g.n; $('#gwDeadline').value = toLocalInput(g.deadline); };
+    const fin = el('button', 'btn ghost sm', g.final ? 'إعادة فتح الحساب' : 'إنهاء الجولة (حساب البدلاء والكابتن)'); 
+    fin.onclick = async () => {
+      try { await setDoc(doc(S.db, 'gameweeks', String(g.n)), { n: g.n, deadline: g.deadline, final: !g.final }, { merge: true }); toast('تم'); }
+      catch (e) { toast(errText(e), true); }
+    };
+    edit.type = fin.type = 'button'; acts.append(edit, fin);
+    if (g.final && !g.pricesApplied) {
+      const pr = el('button', 'btn ghost sm', 'تحديث الأسعار');  let armed = null;
+      pr.onclick = async () => {
+        try {
+          if (!armed) {
+            await loadPicks(true);
+            const all = {}; Object.keys(S.allPicks).forEach((u) => { if (S.teams.has(u)) all[u] = S.allPicks[u]; });
+            const { net, teamsN } = netTransfers(S.gws, all, g.n);
+            armed = priceChanges(net, teamsN, S.players);
+            pr.textContent = armed.changes.length ? `سيتغير سعر ${armed.changes.length} لاعب (الحد ${armed.T}) — اضغط للتأكيد` : 'لا تغييرات — اضغط لإنهاء التحديث';
+            return;
+          }
+          for (const c of armed.changes) await patchPlayer(c.id, { price: c.to });
+          await setDoc(doc(S.db, 'gameweeks', String(g.n)), { n: g.n, deadline: g.deadline, final: true, pricesApplied: true }, { merge: true });
+          toast('تم تحديث الأسعار ✅');
+        } catch (e) { toast(errText(e), true); }
+      };
+      pr.type = 'button'; acts.appendChild(pr);
+    }
+    row.append(info, acts); box.appendChild(row);
+  });
+}
+$('#gwAdmin').onclick = () => {
+  if (!S.admin) return;
+  const next = S.gws.length ? Math.max(...S.gws.map((g) => g.n)) + 1 : 1;
+  $('#gwNum').value = next; $('#gwDeadline').value = toLocalInput(Date.now() + 7 * 864e5);
+  $('#gwErr').textContent = ''; renderGwAdmin(); openModal('#gwModal');
+};
+$('#gwForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const n = Number($('#gwNum').value), dl = new Date($('#gwDeadline').value).getTime();
+  if (!(Number.isInteger(n) && n >= 1 && n <= 99)) { $('#gwErr').textContent = 'رقم الجولة من 1 إلى 99'; return; }
+  if (!Number.isFinite(dl)) { $('#gwErr').textContent = 'اختر تاريخ ووقت الموعد النهائي'; return; }
+  try {
+    const old = S.gws.find((g) => g.n === n);
+    await setDoc(doc(S.db, 'gameweeks', String(n)), { n, deadline: dl, final: old ? old.final : false, pricesApplied: old ? !!old.pricesApplied : false }, { merge: true });
+    $('#gwErr').textContent = ''; toast('تم حفظ الجولة');
+  } catch (er) { $('#gwErr').textContent = errText(er); }
 };
 
 let editing = null, photoData; // photoData: undefined = بدون تغيير، null = حذف، نص = صورة جديدة
@@ -791,23 +980,14 @@ function applyPlayers(list) {
 let playersReady, playersLoaded;
 playersReady = new Promise((r) => { playersLoaded = r; });
 
-async function loadMyTeam() {
-  try {
-    await playersReady;
-    const d = await getDoc(doc(S.db, 'teams', S.uid));
-    S.hasTeam = d.exists();
-    if (d.exists()) { applyTeam(d.data()); renderTeam(); renderList(); }
-  } catch { /* لا يوجد فريق */ }
-}
-
 (function init() {
   S.rules = RULES;
   const sel = $('#formation');
   Object.keys(S.rules.formations).forEach((f) => sel.appendChild(el('option', null, f)));
   S.formation = Object.keys(S.rules.formations)[0]; sel.value = S.formation;
   S.slots = emptySlots(S.formation); S.bench = Array(S.rules.bench).fill(null);
-  $('#rulesHint').textContent = `${S.rules.starters} لاعبين أساسيين و${S.rules.bench === 1 ? 'بديل واحد' : S.rules.bench + ' بدلاء'}، والميزانية ${money(S.rules.budget)}. إذا امتلأ المركز في الملعب ينتقل اللاعب الجديد إلى الدكة. اضغط على اللاعب في الملعب لإزالته. الحد الأقصى ${S.rules.maxPerClub} لاعبين من نفس الفريق.`;
-  setAdmin(false); setUser(null); $('#googleBtn').hidden = true; renderTeam();
+  $('#rulesHint').textContent = `${S.rules.starters} لاعبين أساسيين و${S.rules.bench === 1 ? 'بديل واحد' : S.rules.bench + ' بدلاء'}، والميزانية ${money(S.rules.budget)}. اضغط C لتحديد الكابتن (نقاطه ×2) وV للنائب (يحل محله إذا لم يلعب). تحويل مجاني واحد كل جولة (يتراكم حتى ${5})، وكل تحويل إضافي يخصم ${HIT} نقاط. الحد الأقصى ${S.rules.maxPerClub} لاعبين من نفس الفريق. التعديل ممكن حتى الموعد النهائي لكل جولة.`;
+  setAdmin(false); setUser(null); $('#googleBtn').hidden = true; renderTeam(); renderChips(); renderGwBar();
 
   if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
     const m = $('#setupMsg'); m.hidden = false;
@@ -821,17 +1001,25 @@ async function loadMyTeam() {
     (snap) => { applyPlayers(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); playersLoaded(); },
     (e) => { toast(errText(e), true); playersLoaded(); });
 
+  onSnapshot(collection(S.db, 'gameweeks'),
+    async (snap) => {
+      S.gws = snap.docs.map((d) => d.data()).sort((a, b) => a.n - b.n);
+      await playersReady; S.picksT = 0;
+      refreshGame(true);
+    },
+    (e) => toast(errText(e), true));
+
   getRedirectResult(S.auth).catch((e) => toast(errText(e), true));
   let welcomed = false;
-  onAuthStateChanged(S.auth, (u) => {
-    S.uid = u ? u.uid : null; S.hasTeam = false;
+  onAuthStateChanged(S.auth, async (u) => {
+    S.uid = u ? u.uid : null; S.hasTeam = false; S.loadedFor = null;
     setUser(u);
     const admin = !!u && ADMIN_UID.split(',').map((x) => x.trim()).filter(Boolean).includes(u.uid);
     setAdmin(admin);
     if (u) {
       if (!welcomed) toast(admin ? 'مرحبًا بك، تم دخول المشرف 👑' : `أهلًا ${u.displayName || ''}`);
       welcomed = true;
-      loadMyTeam();
+      await playersReady; refreshGame(true);
     } else welcomed = false;
     if (!$('#tab-table').hidden) renderStandings();
   });
