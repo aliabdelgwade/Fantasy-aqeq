@@ -7,7 +7,7 @@ export const firebaseConfig = {
   appId: "1:989847611026:web:42f648801b55690aede84b",
 };
 
-export const ADMIN_UID = "";
+export const ADMIN_UID = "X7hlzU47gHcft6fDn6QjemcwOlt1";
 
 export const RULES = {
   budget: 40,
