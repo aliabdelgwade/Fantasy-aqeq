@@ -40,6 +40,7 @@
   <nav class="tabs">
     <button class="tab active" data-tab="pick">اختيار الفريق</button>
     <button class="tab" data-tab="table">ترتيب الدوري</button>
+    <button class="tab" data-tab="cup">🏆 البطولة</button>
     <button class="gw-btn" id="gwAdmin" type="button" hidden>⚙️ إدارة الجولات</button>
   </nav>
 
@@ -91,6 +92,12 @@
       <input type="search" id="search" class="search" placeholder="ابحث عن لاعب أو فريق…">
       <div class="plist" id="plist"></div>
     </div>
+  </section>
+
+  <!-- ====== البطولة ====== -->
+  <section id="tab-cup" class="panel table-panel" hidden>
+    <h2>مراحل البطولة</h2>
+    <div id="cupBody"></div>
   </section>
 
   <!-- ====== ترتيب الدوري ====== -->
@@ -217,6 +224,7 @@
     <div class="m-body">
       <div id="gwList"></div>
       <div class="grid2">
+        <div><label for="gwStage">المرحلة</label><select id="gwStage"><option value="gw">جولات</option><option value="r16">دور الـ16</option><option value="qf">ربع النهائي</option><option value="sf">نصف النهائي</option><option value="final">النهائي</option></select></div>
         <div><label for="gwNum">رقم الجولة</label><input type="number" id="gwNum" min="1" max="99" inputmode="numeric"></div>
         <div><label for="gwDeadline">الموعد النهائي</label><input type="datetime-local" id="gwDeadline"></div>
       </div>

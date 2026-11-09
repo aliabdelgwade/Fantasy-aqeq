@@ -162,3 +162,7 @@ export function priceChanges(net, teamsN, players) {
   });
   return { T, changes: out };
 }
+
+// ---- مراحل البطولة (مثل كأس العالم) ----
+export const STAGES = { gw: 'الجولات', r16: 'دور الـ16', qf: 'ربع النهائي', sf: 'نصف النهائي', final: 'النهائي' };
+export const gwLabel = (g) => (!g.stage || g.stage === 'gw' ? `الجولة ${g.n}` : `${STAGES[g.stage]} (جولة ${g.n})`);

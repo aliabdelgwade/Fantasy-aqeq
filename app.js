@@ -9,7 +9,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 import {
-  SC, num, breakdown, sumObj, matchPts, totalPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT,
+  SC, num, breakdown, sumObj, matchPts, totalPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, gwLabel,
 } from './game.js';
 
 const POS = {
@@ -661,7 +661,7 @@ $('#saveTeam').onclick = async () => {
     });
     S.hasTeam = true;
     await loadPicks(true); renderGwBar(); renderChips(); renderTeam();
-    toast(`تم حفظ فريقك للجولة ${n} ✅`);
+    toast(`تم حفظ فريقك (${gwLabel(S.openGw)}) ✅`);
   } catch (e) { toast(errText(e), true); }
   finally { btn.disabled = false; }
 };
@@ -727,7 +727,7 @@ function openTeamModal(r) {
   if (!ns.length) body.appendChild(el('div', 'empty-msg', 'لا توجد جولات منتهية الموعد بعد.'));
   ns.forEach((n) => {
     const g = r.tt.perGw[n]; const card = el('div', 'tm-gw');
-    card.appendChild(el('div', 'tm-h', `الجولة ${n} — ${g.net} نقطة` + (g.hit ? ` (خصم ${g.hit}−)` : '') + (g.chip ? ` · ${CHIPS[g.chip]}` : '') + (g.carried ? ' · لم يحفظ تغييرًا' : '')));
+    card.appendChild(el('div', 'tm-h', `${gwLabel(S.gws.find((x) => x.n === n) || { n })} — ${g.net} نقطة` + (g.hit ? ` (خصم ${g.hit}−)` : '') + (g.chip ? ` · ${CHIPS[g.chip]}` : '') + (g.carried ? ' · لم يحفظ تغييرًا' : '')));
     g.score.items.forEach((it) => {
       const line = el('div', 'tm-p' + (it.played ? '' : ' dim'));
       line.append(el('span', null, pname(it.id) + (g.score.captain === it.id ? (g.chip === 'tc' ? ' (TC)' : ' (C)') : '')), el('b', null, String(it.pts)));
@@ -741,10 +741,49 @@ function openTeamModal(r) {
 }
 document.querySelectorAll('.tab').forEach((t) => t.onclick = () => {
   document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === t));
-  const pick = t.dataset.tab === 'pick';
-  $('#tab-pick').hidden = !pick; $('#tab-table').hidden = pick;
-  if (!pick) renderStandings();
+  const k = t.dataset.tab;
+  $('#tab-pick').hidden = k !== 'pick'; $('#tab-table').hidden = k !== 'table'; $('#tab-cup').hidden = k !== 'cup';
+  if (k === 'table') renderStandings();
+  if (k === 'cup') renderCup();
 });
+
+// ---------- صفحة البطولة (مثل كأس العالم) ----------
+async function renderCup() {
+  const box = $('#cupBody'); box.innerHTML = '';
+  box.appendChild(el('div', 'empty-msg', 'جارٍ التحميل…'));
+  try { await loadPicks(true); } catch (e) { box.innerHTML = ''; box.appendChild(el('div', 'empty-msg', errText(e))); return; }
+  box.innerHTML = '';
+  const now = Date.now();
+  const totals = [...S.teams.entries()].map(([uid, t]) => ({ uid, t, tt: teamTotals(S.gws, S.allPicks[uid] || {}, S.byId, S.rules.formations, now) }));
+  Object.keys(STAGES).forEach((st, idx) => {
+    const list = S.gws.filter((g) => (g.stage || 'gw') === st);
+    const sec = el('div', 'cup-stage' + (st === 'final' ? ' cup-final' : ''));
+    sec.appendChild(el('h3', null, (st === 'final' ? '🏆 ' : '') + STAGES[st]));
+    if (!list.length) { sec.appendChild(el('div', 'cup-empty', 'لم يُعلن بعد')); box.appendChild(sec); return; }
+    const grid = el('div', 'cup-grid');
+    list.forEach((g) => {
+      const card = el('div', 'cup-card');
+      const open = g.deadline > now;
+      card.append(el('b', null, st === 'gw' ? `الجولة ${g.n}` : `جولة ${g.n}`),
+        el('span', 'tag ' + (g.final ? 'fin' : open ? 'open' : 'lock'), g.final ? 'منتهية' : open ? 'مفتوحة' : 'مقفلة'),
+        el('div', 'cup-date', 'الموعد: ' + fmtDate(g.deadline)));
+      if (!open) {
+        const top = totals.filter((x) => x.tt.perGw[g.n]).sort((a, b) => b.tt.perGw[g.n].net - a.tt.perGw[g.n].net).slice(0, 3);
+        top.forEach((x, i) => {
+          const l = el('div', 'cup-top'); l.append(el('span', null, ['🥇', '🥈', '🥉'][i] + ' ' + x.t.name), el('b', null, String(x.tt.perGw[g.n].net)));
+          card.appendChild(l);
+        });
+      }
+      grid.appendChild(card);
+    });
+    sec.appendChild(grid); box.appendChild(sec);
+  });
+  const champ = totals.sort((a, b) => b.tt.total - a.tt.total)[0];
+  if (champ && champ.tt.total > 0) {
+    const f = el('div', 'cup-champ'); f.append(el('span', null, 'المتصدر الحالي'), el('b', null, `${champ.t.name} — ${champ.tt.total} نقطة`));
+    box.prepend(f);
+  }
+}
 
 // ---------- الجولات: الشريط والرقائق ----------
 function renderGwBar() {
@@ -755,7 +794,7 @@ function renderGwBar() {
   const left = S.openGw.deadline - Date.now();
   const d = Math.floor(left / 864e5), h = Math.floor(left % 864e5 / 36e5), m = Math.floor(left % 36e5 / 6e4), sec = Math.floor(left % 6e4 / 1000);
   const p2 = (x) => String(x).padStart(2, '0');
-  bar.append(el('b', null, `الجولة ${S.openGw.n}`), el('span', null, `الموعد النهائي: ${fmtDate(S.openGw.deadline)}`),
+  bar.append(el('b', null, gwLabel(S.openGw)), el('span', null, `الموعد النهائي: ${fmtDate(S.openGw.deadline)}`),
     el('span', 'cd', `يتبقى ${d ? d + ' يوم ' : ''}${p2(h)}:${p2(m)}:${p2(sec)}`));
 }
 function renderChips() {
@@ -841,14 +880,14 @@ function renderGwAdmin() {
   S.gws.forEach((g) => {
     const row = el('div', 'gw-row');
     const info = el('div', 'gw-info');
-    info.append(el('b', null, `الجولة ${g.n}`), el('span', null, fmtDate(g.deadline)),
+    info.append(el('b', null, gwLabel(g)), el('span', null, fmtDate(g.deadline)),
       el('span', g.final ? 'tag fin' : (g.deadline > Date.now() ? 'tag open' : 'tag lock'), g.final ? 'منتهية' : (g.deadline > Date.now() ? 'مفتوحة' : 'مقفلة')),
       g.pricesApplied ? el('span', 'tag fin', 'تم تحديث الأسعار') : el('span'));
     const acts = el('div', 'gw-acts');
-    const edit = el('button', 'btn ghost sm', 'تعديل الموعد');  edit.onclick = () => { $('#gwNum').value = g.n; $('#gwDeadline').value = toLocalInput(g.deadline); };
+    const edit = el('button', 'btn ghost sm', 'تعديل الموعد');  edit.onclick = () => { $('#gwNum').value = g.n; $('#gwStage').value = g.stage || 'gw'; $('#gwDeadline').value = toLocalInput(g.deadline); };
     const fin = el('button', 'btn ghost sm', g.final ? 'إعادة فتح الحساب' : 'إنهاء الجولة (حساب البدلاء والكابتن)'); 
     fin.onclick = async () => {
-      try { await setDoc(doc(S.db, 'gameweeks', String(g.n)), { n: g.n, deadline: g.deadline, final: !g.final }, { merge: true }); toast('تم'); }
+      try { await setDoc(doc(S.db, 'gameweeks', String(g.n)), { n: g.n, stage: g.stage || 'gw', deadline: g.deadline, final: !g.final }, { merge: true }); toast('تم'); }
       catch (e) { toast(errText(e), true); }
     };
     edit.type = fin.type = 'button'; acts.append(edit, fin);
@@ -865,7 +904,7 @@ function renderGwAdmin() {
             return;
           }
           for (const c of armed.changes) await patchPlayer(c.id, { price: c.to });
-          await setDoc(doc(S.db, 'gameweeks', String(g.n)), { n: g.n, deadline: g.deadline, final: true, pricesApplied: true }, { merge: true });
+          await setDoc(doc(S.db, 'gameweeks', String(g.n)), { n: g.n, stage: g.stage || 'gw', deadline: g.deadline, final: true, pricesApplied: true }, { merge: true });
           toast('تم تحديث الأسعار ✅');
         } catch (e) { toast(errText(e), true); }
       };
@@ -887,7 +926,7 @@ $('#gwForm').onsubmit = async (e) => {
   if (!Number.isFinite(dl)) { $('#gwErr').textContent = 'اختر تاريخ ووقت الموعد النهائي'; return; }
   try {
     const old = S.gws.find((g) => g.n === n);
-    await setDoc(doc(S.db, 'gameweeks', String(n)), { n, deadline: dl, final: old ? old.final : false, pricesApplied: old ? !!old.pricesApplied : false }, { merge: true });
+    await setDoc(doc(S.db, 'gameweeks', String(n)), { n, stage: $('#gwStage').value, deadline: dl, final: old ? old.final : false, pricesApplied: old ? !!old.pricesApplied : false }, { merge: true });
     $('#gwErr').textContent = ''; toast('تم حفظ الجولة');
   } catch (er) { $('#gwErr').textContent = errText(er); }
 };
@@ -1022,5 +1061,6 @@ playersReady = new Promise((r) => { playersLoaded = r; });
       await playersReady; refreshGame(true);
     } else welcomed = false;
     if (!$('#tab-table').hidden) renderStandings();
+    if (!$('#tab-cup').hidden) renderCup();
   });
 })();

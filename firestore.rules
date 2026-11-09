@@ -40,10 +40,11 @@ service cloud.firestore {
     }
 
     function validGw(d) {
-      return d.keys().hasOnly(['n', 'name', 'deadline', 'final', 'pricesApplied'])
+      return d.keys().hasOnly(['n', 'name', 'stage', 'deadline', 'final', 'pricesApplied'])
         && d.n is int && d.n >= 1 && d.n <= 99
         && d.deadline is int && d.final is bool
         && (!('pricesApplied' in d) || d.pricesApplied is bool)
+        && (!('stage' in d) || d.stage in ['gw', 'r16', 'qf', 'sf', 'final'])
         && (!('name' in d) || (d.name is string && d.name.size() <= 40));
     }
 

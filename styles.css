@@ -307,3 +307,14 @@ tr.clickable{cursor:pointer}
 .tm-p.dim{opacity:.5}
 .tm-note{font-size:12px;color:var(--muted);margin-top:4px}
 .gw-btn{background:transparent;border:1px solid var(--yellow);color:var(--yellow);padding:6px 16px;border-radius:999px;font-weight:700;font-size:14px;cursor:pointer;font-family:inherit}
+
+.cup-stage{margin-bottom:18px}
+.cup-stage h3{margin:0 0 8px;font-size:17px;border-inline-start:4px solid var(--yellow);padding-inline-start:8px}
+.cup-final h3{color:var(--yellow)}
+.cup-empty{color:var(--muted);font-size:13px;padding:8px 12px;background:var(--panel2);border:1px dashed var(--line);border-radius:10px}
+.cup-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.cup-card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:4px}
+.cup-final .cup-card{border-color:var(--yellow)}
+.cup-date{font-size:12px;color:var(--muted)}
+.cup-top{display:flex;justify-content:space-between;font-size:13px}
+.cup-champ{background:linear-gradient(90deg,#f4c430,#e8a21a);color:#1b1500;border-radius:12px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;font-weight:800}
