@@ -458,10 +458,7 @@ function pfStatsPane(p, w) {
     val.saves += num(m.sv); val.bonus += num(m.bo); val.yc += num(m.yc); val.rc += num(m.rc);
     val.pm += num(m.pm); val.og += num(m.og); val.gc += num(m.ga);
   });
-  const keys = ['min', 'goals', 'assists', 'cs'];
-  if (p.position === 'gk') keys.push('saves');
-  keys.push('bonus', 'yc', 'rc', 'pm', 'og');
-  if (p.position === 'gk' || p.position === 'def') keys.push('gc');
+  const keys = ['min', 'goals', 'assists', 'cs', 'bonus', 'yc', 'rc', 'pm', 'og'];
   const t = el('table', 'pf-table');
   const h = el('tr'); ['الإحصائية', 'العدد', 'النقاط'].forEach((x) => h.appendChild(el('th', null, x))); t.appendChild(h);
   keys.forEach((k) => {
@@ -474,14 +471,12 @@ function pfStatsPane(p, w) {
   const d = el('details', 'pf-rules'); d.appendChild(el('summary', null, 'كيف تُحسب النقاط؟'));
   const ul = el('ul');
   [
-    'اللعب 11 دقيقة فأكثر: 2 نقطة (أقل من 11 دقيقة: 1 نقطة)',
-    'هدف: مهاجم 4 · وسط 5 · مدافع أو حارس 6',
-    'تمريرة حاسمة: 3 نقاط',
-    'شباك نظيفة: حارس أو مدافع 4 نقاط · وسط نقطة واحدة',
-    'التصديات: نقطة لكل 3 تصديات للحارس',
-    'البونص: من 1 إلى 3 نقاط لأفضل لاعبين في المباراة',
-    'بطاقة صفراء -1 · حمراء -3 · ركلة جزاء ضائعة أو هدف عكسي -2',
-    'الحارس أو المدافع: -1 لكل هدفين يدخلان مرماه',
+    'من يشارك في المباراة: 2 نقطة (بغض النظر عن الدقائق)',
+    'هدف: 5 نقاط لكل المراكز',
+    'تمريرة حاسمة: 4 نقاط لكل المراكز',
+    'شباك نظيفة: حارس أو مدافع 4 نقاط (الوسط والمهاجم لا يحصلون عليها)',
+    'أفضل لاعب في المباراة: نقطتان',
+    'بطاقة صفراء -1 · حمراء -3 · هدف عكسي -3 · ركلة جزاء ضائعة -2',
   ].forEach((x) => ul.appendChild(el('li', null, x)));
   d.appendChild(ul); w.appendChild(d);
 }
@@ -524,7 +519,7 @@ function readMatchForm() {
   return {
     round: n('#mfRound', 99), opp: $('#mfOpp').value.trim().slice(0, 30), home: $('#mfHome').value === '1',
     gf: n('#mfGf', 99), ga: n('#mfGa', 99), min: n('#mfMin', 120), g: n('#mfG', 20), a: n('#mfA', 20),
-    sv: n('#mfSv', 60), bo: n('#mfBo', 3), yc: n('#mfYc', 2), rc: n('#mfRc', 1), pm: n('#mfPm', 5), og: n('#mfOg', 5),
+    sv: n('#mfSv', 60), bo: n('#mfBo', 2), yc: n('#mfYc', 2), rc: n('#mfRc', 1), pm: n('#mfPm', 5), og: n('#mfOg', 5),
   };
 }
 function mfPreview() {
@@ -535,7 +530,7 @@ function mfPreview() {
   const chips = el('div', 'live-chips');
   Object.keys(b).forEach((k) => { if (b[k]) chips.appendChild(el('span', 'tag', `${LBL[k]} ${signed(b[k])}`)); });
   box.appendChild(chips);
-  $('#mfSvWrap').hidden = p.position !== 'gk';
+  $('#mfSvWrap').hidden = true;
 }
 function openMatchForm(pid, round) {
   if (!S.admin) return;
@@ -1007,7 +1002,7 @@ $('#pfDelete').onclick = async () => {
 
 // ---------- التشغيل ----------
 function applyPlayers(list) {
-  S.players = list;
+  S.players = list.map((p) => ({ ...p, points: totalPts(p) }));
   S.byId = new Map(S.players.map((p) => [p.id, p]));
   ORDER.forEach((k) => { if (S.slots[k]) S.slots[k] = S.slots[k].map((id) => (id && S.byId.has(id) ? id : null)); });
   S.bench = S.bench.map((id) => (id && S.byId.has(id) ? id : null));
@@ -1025,7 +1020,7 @@ playersReady = new Promise((r) => { playersLoaded = r; });
   Object.keys(S.rules.formations).forEach((f) => sel.appendChild(el('option', null, f)));
   S.formation = Object.keys(S.rules.formations)[0]; sel.value = S.formation;
   S.slots = emptySlots(S.formation); S.bench = Array(S.rules.bench).fill(null);
-  $('#rulesHint').textContent = `${S.rules.starters} لاعبين أساسيين و${S.rules.bench === 1 ? 'بديل واحد' : S.rules.bench + ' بدلاء'}، والميزانية ${money(S.rules.budget)}. اضغط C لتحديد الكابتن (نقاطه ×2) وV للنائب (يحل محله إذا لم يلعب). تحويل مجاني واحد كل جولة (يتراكم حتى ${5})، وكل تحويل إضافي يخصم ${HIT} نقاط. الحد الأقصى ${S.rules.maxPerClub} لاعبين من نفس الفريق. التعديل ممكن حتى الموعد النهائي لكل جولة.`;
+  $('#rulesHint').textContent = `${S.rules.starters} لاعبين أساسيين و${S.rules.bench === 1 ? 'بديل واحد' : S.rules.bench + ' بدلاء'}، والميزانية ${money(S.rules.budget)}. اضغط C لتحديد الكابتن (نقاطه ×2) وV للنائب (يحل محله إذا لم يلعب). تحويلان مجانيان كل جولة (يتراكمان حتى ${3})، وكل تحويل إضافي يخصم ${HIT} نقاط. الحد الأقصى ${S.rules.maxPerClub} لاعبين من نفس الفريق. التعديل ممكن حتى الموعد النهائي لكل جولة.`;
   setAdmin(false); setUser(null); $('#googleBtn').hidden = true; renderTeam(); renderChips(); renderGwBar();
 
   if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {

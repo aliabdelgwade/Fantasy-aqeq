@@ -179,14 +179,14 @@
         <div><label for="mfMin">الدقائق</label><input type="number" id="mfMin" min="0" max="120" inputmode="numeric"></div>
         <div><label for="mfG">أهداف سجّلها</label><input type="number" id="mfG" min="0" max="20" inputmode="numeric"></div>
         <div><label for="mfA">تمريرات حاسمة</label><input type="number" id="mfA" min="0" max="20" inputmode="numeric"></div>
-        <div><label for="mfBo">بونص (0-3)</label><input type="number" id="mfBo" min="0" max="3" inputmode="numeric"></div>
+        <div><label for="mfBo">أفضل لاعب (0-2)</label><input type="number" id="mfBo" min="0" max="2" inputmode="numeric"></div>
         <div><label for="mfYc">صفراء</label><input type="number" id="mfYc" min="0" max="2" inputmode="numeric"></div>
         <div><label for="mfRc">حمراء</label><input type="number" id="mfRc" min="0" max="1" inputmode="numeric"></div>
         <div><label for="mfPm">ركلة جزاء ضائعة</label><input type="number" id="mfPm" min="0" max="5" inputmode="numeric"></div>
         <div><label for="mfOg">هدف عكسي</label><input type="number" id="mfOg" min="0" max="5" inputmode="numeric"></div>
-        <div id="mfSvWrap"><label for="mfSv">تصديات الحارس</label><input type="number" id="mfSv" min="0" max="60" inputmode="numeric"></div>
+        <div id="mfSvWrap" hidden><label for="mfSv">تصديات الحارس</label><input type="number" id="mfSv" min="0" max="60" inputmode="numeric"></div>
       </div>
-      <p class="hint">الشباك النظيفة والأهداف المستقبلة تُحسب تلقائيًا من أهداف الخصم.</p>
+      <p class="hint">الشباك النظيفة (للحارس والمدافع) تُحسب تلقائيًا إذا كانت أهداف الخصم صفر.</p>
       <div class="live" id="mfLive"></div>
       <div class="err" id="mfErr"></div>
       <div class="actions">

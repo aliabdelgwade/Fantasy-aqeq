@@ -1,10 +1,11 @@
 // ================= Aqeq League — منطق الجولات (دوال نقية بدون Firebase) =================
 // نظام النقاط
-export const SC = { goal: { gk: 6, def: 6, mid: 5, fwd: 4 }, assist: 3, cs: { gk: 4, def: 4, mid: 1, fwd: 0 }, yc: -1, rc: -3, pm: -2, og: -2 };
+export const SC = { play: 2, goal: { gk: 5, def: 5, mid: 5, fwd: 5 }, assist: 4, cs: { gk: 4, def: 4, mid: 0, fwd: 0 }, yc: -1, rc: -3, pm: -2, og: -3, bonusMax: 2 };
 export const CHIPS = { wc: 'Wildcard', fh: 'Free Hit', bb: 'Bench Boost', tc: 'Triple Captain' };
 export const CHIP_MAX = { wc: 2, fh: 1, bb: 1, tc: 1 };
 export const HIT = 4;
-export const MAX_BANK = 5;
+export const MAX_BANK = 3;
+export const FT_PER_WEEK = 2;
 
 export const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
@@ -14,17 +15,17 @@ export function breakdown(pos, m) {
   if (min <= 0) return zero;
   const ga = num(m.ga);
   return {
-    min: min >= 11 ? 2 : 1,
+    min: SC.play,
     goals: num(m.g) * SC.goal[pos],
     assists: num(m.a) * SC.assist,
     cs: ga === 0 ? SC.cs[pos] : 0,
-    saves: pos === 'gk' ? Math.floor(num(m.sv) / 3) : 0,
-    bonus: num(m.bo),
+    saves: 0,
+    bonus: Math.min(SC.bonusMax, Math.max(0, num(m.bo))),
     yc: num(m.yc) * SC.yc,
     rc: num(m.rc) * SC.rc,
     pm: num(m.pm) * SC.pm,
     og: num(m.og) * SC.og,
-    gc: (pos === 'gk' || pos === 'def') ? -Math.floor(ga / 2) : 0,
+    gc: 0,
   };
 }
 export const sumObj = (o) => Object.values(o).reduce((s, v) => s + v, 0) + 0;
@@ -90,7 +91,7 @@ export function scorePick(pick, chip, g, byId, formations) {
 export function timeline(gws, picks) {
   const used = { wc: 0, fh: 0, bb: 0, tc: 0 };
   let base = null;          // آخر تشكيلة "حقيقية" (بدون Free Hit)
-  let ft = 1;               // التحويلات المجانية المتاحة قبل الجولة
+  let ft = FT_PER_WEEK;     // التحويلات المجانية المتاحة قبل الجولة
   const out = [];
   for (const g of gws) {
     const sp = picks[g.n];
@@ -108,9 +109,9 @@ export function timeline(gws, picks) {
     const hit = free ? 0 : Math.max(0, t - ft) * HIT;
     const ftBefore = ft;
     let ftNext;
-    if (!prev) ftNext = 1;
+    if (!prev) ftNext = FT_PER_WEEK;
     else if (chip === 'wc' || chip === 'fh') ftNext = ft;
-    else ftNext = Math.min(MAX_BANK, Math.max(0, ft - t) + 1);
+    else ftNext = Math.min(MAX_BANK, Math.max(0, ft - t) + FT_PER_WEEK);
     if (chip) used[chip]++;
 
     out.push({ n: g.n, pick, squad, chip, carried, transfers: t, free, hit, ftBefore, ftNext, prevBase: prev });
