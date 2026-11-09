@@ -445,7 +445,7 @@ async function loadMyTeam() {
   onAuthStateChanged(S.auth, (u) => {
     S.uid = u ? u.uid : null; S.hasTeam = false;
     setUser(u);
-    const admin = !!u && !!ADMIN_UID && u.uid === ADMIN_UID;
+   const admin = !!u && ADMIN_UID.split(',').map((x) => x.trim()).includes(u.uid);
     setAdmin(admin);
     if (u) {
       if (!welcomed) toast(admin ? 'مرحبًا بك، تم دخول المشرف 👑' : `أهلًا ${u.displayName || ''}`);
