@@ -268,4 +268,9 @@ input:disabled{opacity:.7}
   .pf-fixcol{border-inline-start:none;padding-inline-start:0;border-top:1px solid var(--line);padding-top:10px}
   .pf-val{font-size:16px}
   .grid3{grid-template-columns:1fr 1fr}
-}
+ }
+.pf-modal,.modal,.m-body{scrollbar-width:none;-ms-overflow-style:none}
+.pf-modal::-webkit-scrollbar,.modal::-webkit-scrollbar,.m-body::-webkit-scrollbar{display:none;width:0;height:0}
+.plist,.pf-bars{scrollbar-width:thin;scrollbar-color:#2a3a5c transparent}
+.plist::-webkit-scrollbar,.pf-bars::-webkit-scrollbar{width:6px;height:6px}
+.plist::-webkit-scrollbar-thumb,.pf-bars::-webkit-scrollbar-thumb{background:#2a3a5c;border-radius:6px}
