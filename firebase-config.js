@@ -1,3 +1,6 @@
+// ============================================================
+//  إعدادات Firebase — الصقي هنا بيانات مشروعك (راجعي README)
+// ============================================================
 export const firebaseConfig = {
   apiKey: "AIzaSyB8TtzTlGqCZnZ7V2VzIEs069J_xWNeSrg",
   authDomain: "fantasy-aqeq.firebaseapp.com",
@@ -7,9 +10,11 @@ export const firebaseConfig = {
   appId: "1:989847611026:web:42f648801b55690aede84b",
 };
 
-   export const ADMIN_UID =
-     "X7hlzU47gHcft6fDn6QjemcwOlt1,fCDuAii4kcXt2V8gGGVpcox2rw42";
+// معرّف حساب المشرفة (User UID) من Firebase → Authentication → Users
+// ضعيه هنا وفي ملف firestore.rules أيضًا (القواعد هي الحماية الحقيقية)
+export const ADMIN_UID = "X7hlzU47gHcft6fDn6QjemcwOlt1,fCDuAii4kcXt2V8gGGVpcox2rw42";
 
+// قواعد اللعبة — إذا غيّرتِها غيّري نفس القيم في firestore.rules
 export const RULES = {
   budget: 40,
   starters: 5,

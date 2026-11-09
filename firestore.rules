@@ -1,11 +1,11 @@
 rules_version = '2';
 // قواعد حماية Aqeq League — انسخيها كاملة في Firebase → Firestore Database → Rules
-// مهم: ضعي UID حسابك مكان PUT_ADMIN_UID_HERE
+// حساب المشرفَين مضبوط في دالة isAdmin أدناه
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function isAdmin() {
-      return request.auth != null && request.auth.uid == 'PUT_ADMIN_UID_HERE';
+      return request.auth != null && request.auth.uid in ['X7hlzU47gHcft6fDn6QjemcwOlt1', 'fCDuAii4kcXt2V8gGGVpcox2rw42'];
     }
 
     function player(id) {
@@ -13,13 +13,15 @@ service cloud.firestore {
     }
 
     function validPlayer(d) {
-      return d.keys().hasOnly(['name', 'desc', 'position', 'club', 'price', 'points', 'photo', 'createdAt', 'updatedAt'])
+      return d.keys().hasOnly(['name', 'desc', 'position', 'club', 'price', 'points', 'photo', 'matches', 'fixtures', 'createdAt', 'updatedAt'])
         && d.name is string && d.name.size() > 0 && d.name.size() <= 40
         && d.desc is string && d.desc.size() <= 300
         && d.position in ['gk', 'def', 'mid', 'fwd']
         && d.club is string && d.club.size() > 0 && d.club.size() <= 40
         && d.price is number && d.price >= 1 && d.price <= 20
-        && d.points is int && d.points >= -100 && d.points <= 9999
+        && d.points is int && d.points >= -999 && d.points <= 99999
+        && (!('matches' in d) || (d.matches is list && d.matches.size() <= 80))
+        && (!('fixtures' in d) || (d.fixtures is list && d.fixtures.size() <= 40))
         && (d.photo == null || (d.photo is string && d.photo.size() < 700000))
         && d.createdAt is int && d.updatedAt is int;
     }

@@ -23,7 +23,7 @@ const money = (n) => '$' + (Math.round(n * 10) / 10).toFixed(1);
 const S = {
   rules: null, admin: false, players: [], byId: new Map(),
   formation: '2-1-1', slots: {}, bench: [], filter: 'all', query: '', target: null,
-  uid: null, hasTeam: false, db: null, auth: null,
+  uid: null, hasTeam: false, db: null, auth: null, profile: null, sel: null,
 };
 
 // ---------- أدوات ----------
@@ -189,8 +189,8 @@ function renderList() {
   list.forEach((p, n) => {
     const on = isPicked(p.id);
     const row = el('div', 'pitem' + (on ? ' picked' : '')); row.style.animationDelay = Math.min(n * 25, 400) + 'ms';
-    const av = avatar(p, 'av'); av.onclick = () => showInfo(p.id);
-    const meta = el('div', 'meta'); meta.onclick = () => showInfo(p.id);
+    const av = avatar(p, 'av'); av.onclick = () => openProfile(p.id);
+    const meta = el('div', 'meta'); meta.onclick = () => openProfile(p.id);
     const nm = el('div', 'nm', p.name); nm.appendChild(el('span', 'pos ' + p.position, POS[p.position].one));
     meta.append(nm, el('div', 'cl', p.club));
     const price = el('div', 'num'); price.append(el('b', null, money(p.price)), document.createTextNode('السعر'));
@@ -204,22 +204,401 @@ function renderList() {
     box.appendChild(row);
   });
 }
-function showInfo(id) {
-  const p = S.byId.get(id); if (!p) return;
-  const b = $('#infoBody'); b.innerHTML = '';
-  const tags = el('div', 'info-tags');
-  tags.append(el('span', 'pos ' + p.position, POS[p.position].one), el('span', 'tag', p.club),
-    el('span', 'tag', 'السعر ' + money(p.price)), el('span', 'tag', 'النقاط ' + p.points));
-  b.append(avatar(p, 'info-photo'), el('div', 'info-name', p.name), tags, el('p', 'info-desc', p.desc || 'لا يوجد وصف.'));
-  const a = el('div', 'actions');
-  const on = isPicked(id);
-  const t = el('button', 'btn ' + (on ? 'ghost' : 'primary'), on ? 'إزالة من فريقي' : 'إضافة إلى فريقي');
-  t.onclick = () => { closeModal('#infoModal'); on ? removeFromTeam(id) : addToTeam(id); };
-  a.appendChild(t);
-  if (S.admin) { const e = el('button', 'btn ghost', 'تعديل'); e.onclick = () => { closeModal('#infoModal'); openPlayerForm(id); }; a.appendChild(e); }
-  b.appendChild(a);
-  openModal('#infoModal');
+// ================= نظام النقاط =================
+const SC = { goal: { gk: 6, def: 6, mid: 5, fwd: 4 }, assist: 3, cs: { gk: 4, def: 4, mid: 1, fwd: 0 }, yc: -1, rc: -3, pm: -2, og: -2 };
+const POS_PL = { gk: 'الحراس', def: 'المدافعين', mid: 'لاعبي الوسط', fwd: 'المهاجمين' };
+const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+const LBL = {
+  min: 'دقائق اللعب', goals: 'الأهداف', assists: 'التمريرات الحاسمة', cs: 'الشباك النظيفة', saves: 'التصديات',
+  bonus: 'نقاط البونص', yc: 'البطاقات الصفراء', rc: 'البطاقات الحمراء', pm: 'ركلات جزاء ضائعة', og: 'أهداف عكسية', gc: 'أهداف مستقبلة',
+};
+
+function breakdown(pos, m) {
+  const zero = { min: 0, goals: 0, assists: 0, cs: 0, saves: 0, bonus: 0, yc: 0, rc: 0, pm: 0, og: 0, gc: 0 };
+  const min = num(m.min);
+  if (min <= 0) return zero;
+  const ga = num(m.ga);
+  return {
+    min: min >= 11 ? 2 : 1,
+    goals: num(m.g) * SC.goal[pos],
+    assists: num(m.a) * SC.assist,
+    cs: ga === 0 ? SC.cs[pos] : 0,
+    saves: pos === 'gk' ? Math.floor(num(m.sv) / 3) : 0,
+    bonus: num(m.bo),
+    yc: num(m.yc) * SC.yc,
+    rc: num(m.rc) * SC.rc,
+    pm: num(m.pm) * SC.pm,
+    og: num(m.og) * SC.og,
+    gc: (pos === 'gk' || pos === 'def') ? -Math.floor(ga / 2) : 0,
+  };
 }
+const sumObj = (o) => Object.values(o).reduce((s, v) => s + v, 0) + 0;
+const matchPts = (pos, m) => sumObj(breakdown(pos, m));
+const totalPts = (p) => (p?.matches || []).reduce((s, m) => s + matchPts(p.position, m), 0) + 0;
+const signed = (n) => (n > 0 ? '+' + n : String(n));
+
+function pStats(p) {
+  const ms = (p.matches || []).filter((m) => num(m.min) > 0).sort((a, b) => a.round - b.round);
+  const pts = totalPts(p), n = ms.length;
+  const last3 = ms.slice(-3);
+  return {
+    n, pts, ppm: n ? pts / n : 0,
+    form: last3.length ? last3.reduce((s, m) => s + matchPts(p.position, m), 0) / last3.length : 0,
+  };
+}
+function selPct(id) { return S.sel && S.sel.total ? ((S.sel.counts[id] || 0) / S.sel.total) * 100 : 0; }
+function ranks(p) {
+  const peers = S.players.filter((x) => x.position === p.position);
+  const st = new Map(peers.map((x) => [x.id, { price: x.price, ...pStats(x), sel: selPct(x.id) }]));
+  const me = st.get(p.id);
+  const rank = (k) => 1 + peers.filter((x) => st.get(x.id)[k] > me[k]).length;
+  return { n: peers.length, me, price: rank('price'), ppm: rank('ppm'), form: rank('form'), sel: rank('sel') };
+}
+async function ensureTeams() {
+  if (!S.db || (S.sel && Date.now() - S.sel.t < 60000)) return;
+  try {
+    const snap = await getDocs(collection(S.db, 'teams'));
+    const counts = {};
+    snap.docs.forEach((d) => { const t = d.data(); [...(t.starters || []), ...(t.bench || [])].forEach((id) => { counts[id] = (counts[id] || 0) + 1; }); });
+    S.sel = { t: Date.now(), total: snap.docs.length, counts };
+    if ($('#profileModal').classList.contains('open')) renderProfile();
+  } catch { /* نسبة الاختيار اختيارية */ }
+}
+async function patchPlayer(id, patch) {
+  await setDoc(doc(S.db, 'players', id), { ...patch, updatedAt: Date.now() }, { merge: true });
+}
+
+// ================= بروفايل اللاعب =================
+const DIFF_COL = { 1: ['#1f8a4c', '#fff'], 2: ['#7ee08a', '#0f2a14'], 3: ['#d4d8e0', '#1d2433'], 4: ['#f29b4b', '#2b1600'], 5: ['#e5484d', '#fff'] };
+const homeTxt = (h) => (h ? 'ملعبنا' : 'خارج');
+const initialOf = (s) => (s || '?').trim().charAt(0) || '?';
+
+function openProfile(id) {
+  if (!S.byId.get(id)) return;
+  S.profile = { id, tab: 'matches', desc: false };
+  renderProfile(); openModal('#profileModal'); ensureTeams();
+}
+function renderProfile() {
+  const P = S.profile, p = P && S.byId.get(P.id);
+  if (!p) { closeModal('#profileModal'); return; }
+  const modal = $('#profileModal .pf-modal'), body = $('#profileBody');
+  const st = modal.scrollTop;
+  body.innerHTML = '';
+  body.append(pfHeader(p), pfButtons(p), pfStatsGrid(p), pfFormFixtures(p), pfTabs(), pfPane(p), pfActions(p));
+  modal.scrollTop = st;
+}
+
+function pfHeader(p) {
+  const h = el('div', 'pf-head');
+  const back = el('button', 'pf-back', '→'); back.type = 'button'; back.setAttribute('data-close', ''); back.setAttribute('aria-label', 'رجوع');
+  const parts = (p.name || '').trim().split(/\s+/);
+  const first = parts.length > 1 ? parts.shift() : '';
+  const info = el('div', 'pf-info');
+  info.appendChild(el('div', 'pf-pos', POS[p.position].one));
+  if (first) info.appendChild(el('div', 'pf-first', first));
+  info.appendChild(el('div', 'pf-last', parts.join(' ')));
+  info.appendChild(el('div', 'pf-club', p.club));
+  h.append(back, info, avatar(p, 'pf-photo'));
+  return h;
+}
+function pfButtons(p) {
+  const f = document.createDocumentFragment();
+  const row = el('div', 'pf-btns');
+  const b = el('button', 'pf-btn', S.profile.desc ? 'ملف اللاعب ▴' : 'ملف اللاعب ▾'); b.type = 'button';
+  b.onclick = () => { S.profile.desc = !S.profile.desc; renderProfile(); };
+  row.appendChild(b); f.appendChild(row);
+  if (S.profile.desc) f.appendChild(el('div', 'pf-desc', p.desc || 'لا يوجد وصف لهذا اللاعب.'));
+  return f;
+}
+function pfStatsGrid(p) {
+  const r = ranks(p), me = r.me, haveSel = !!S.sel;
+  const cells = [
+    ['السعر', money(p.price), r.price],
+    ['نقاط/مباراة', me.ppm.toFixed(1), r.ppm],
+    ['الفورم', me.form.toFixed(1), r.form],
+    ['الاختيار', haveSel ? me.sel.toFixed(1) + '%' : '…', haveSel ? r.sel : null],
+  ];
+  const card = el('div', 'pf-card'), g = el('div', 'pf-grid');
+  cells.forEach(([lab, val, rk]) => {
+    const c = el('div', 'pf-cell');
+    c.append(el('div', 'pf-lab', lab), el('div', 'pf-val', val), el('div', 'pf-rank', rk ? `${rk} من ${r.n}` : ' '));
+    g.appendChild(c);
+  });
+  card.append(g, el('div', 'pf-foot', 'الترتيب بين ' + POS_PL[p.position]));
+  return card;
+}
+function pfFormFixtures(p) {
+  const card = el('div', 'pf-card pf-two');
+  // الفورم: آخر مباراة
+  const f = el('div', 'pf-col pf-formcol'); f.appendChild(el('h4', null, 'الفورم'));
+  const last = [...(p.matches || [])].sort((a, b) => b.round - a.round)[0];
+  if (last) {
+    const it = el('div', 'pf-item');
+    it.append(el('div', 'pf-rd', 'ج' + last.round), el('div', 'pf-crest', initialOf(last.opp)),
+      el('div', 'pf-opp', last.opp), el('div', 'pf-h', homeTxt(last.home)),
+      el('div', 'pf-ptschip', matchPts(p.position, last) + ' نقطة'));
+    f.appendChild(it);
+  } else f.appendChild(el('div', 'pf-none', 'لا توجد مباريات بعد'));
+  // المباريات القادمة
+  const x = el('div', 'pf-col pf-fixcol'); x.appendChild(el('h4', null, 'المباريات القادمة'));
+  const fx = [...(p.fixtures || [])].sort((a, b) => a.round - b.round).slice(0, 3);
+  if (fx.length) {
+    const row = el('div', 'pf-fixrow');
+    fx.forEach((m) => {
+      const it = el('div', 'pf-item');
+      const [bg, fg] = DIFF_COL[m.diff] || DIFF_COL[3];
+      const d = el('div', 'pf-diff', String(m.diff || 3)); d.style.background = bg; d.style.color = fg;
+      it.append(el('div', 'pf-rd', 'ج' + m.round), el('div', 'pf-crest', initialOf(m.opp)),
+        el('div', 'pf-opp', m.opp), el('div', 'pf-h', homeTxt(m.home)), d);
+      row.appendChild(it);
+    });
+    x.appendChild(row);
+  } else x.appendChild(el('div', 'pf-none', 'لا توجد مباريات قادمة'));
+  if (S.admin) {
+    const a = el('button', 'pf-link', '+ إدارة المباريات القادمة'); a.type = 'button';
+    a.onclick = () => openFixtureForm(p.id); x.appendChild(a);
+  }
+  card.append(f, x);
+  return card;
+}
+function pfTabs() {
+  const t = el('div', 'pf-tabs');
+  [['matches', 'المباريات'], ['stats', 'الإحصائيات'], ['history', 'السجل']].forEach(([k, l]) => {
+    const b = el('button', 'pf-tab' + (S.profile.tab === k ? ' active' : ''), l); b.type = 'button';
+    b.onclick = () => { S.profile.tab = k; renderProfile(); };
+    t.appendChild(b);
+  });
+  return t;
+}
+function pfPane(p) {
+  const w = el('div', 'pf-pane');
+  if (S.profile.tab === 'stats') pfStatsPane(p, w); else if (S.profile.tab === 'history') pfHistoryPane(p, w); else pfMatchesPane(p, w);
+  return w;
+}
+function summaryLine(pos, m) {
+  if (num(m.min) <= 0) return 'لم يشارك';
+  const a = [`⏱ ${m.min}د`];
+  if (m.g) a.push(`⚽ ${m.g}`);
+  if (m.a) a.push(`🅰️ ${m.a}`);
+  if (num(m.ga) === 0 && pos !== 'fwd') a.push('🧱 شباك نظيفة');
+  if (pos === 'gk' && m.sv) a.push(`🧤 ${m.sv}`);
+  if (m.bo) a.push(`⭐ +${m.bo}`);
+  if (m.yc) a.push('🟨' + (m.yc > 1 ? '×' + m.yc : ''));
+  if (m.rc) a.push('🟥');
+  if (m.pm) a.push('ركلة جزاء ضائعة');
+  if (m.og) a.push('هدف عكسي');
+  return a.join('  ·  ');
+}
+function pfMatchesPane(p, w) {
+  if (S.admin) {
+    const add = el('button', 'btn add sm', '+ إضافة نتيجة مباراة'); add.type = 'button';
+    add.onclick = () => openMatchForm(p.id, null); w.appendChild(add);
+  }
+  const ms = [...(p.matches || [])].sort((a, b) => b.round - a.round);
+  if (!ms.length) { w.appendChild(el('div', 'empty-msg', 'لا توجد مباريات مسجّلة بعد.')); return; }
+  ms.forEach((m) => {
+    const pts = matchPts(p.position, m);
+    const row = el('div', 'pf-match');
+    const mid = el('div', 'pf-mmid');
+    mid.append(el('div', 'pf-mt', `ج${m.round} · ضد ${m.opp} (${homeTxt(m.home)}) ${m.gf}-${m.ga}`), el('div', 'pf-ms', summaryLine(p.position, m)));
+    const chip = el('div', 'pf-mpts ' + (pts > 0 ? 'up' : pts < 0 ? 'down' : ''), String(pts));
+    row.append(mid, chip);
+    if (S.admin) { const e = el('button', 'pf-edit', '✎'); e.type = 'button'; e.title = 'تعديل'; e.onclick = () => openMatchForm(p.id, m.round); row.appendChild(e); }
+    w.appendChild(row);
+  });
+}
+function pfStatsPane(p, w) {
+  const ms = (p.matches || []), tot = { min: 0, goals: 0, assists: 0, cs: 0, saves: 0, bonus: 0, yc: 0, rc: 0, pm: 0, og: 0, gc: 0 };
+  const pts = { ...tot }, val = { ...tot };
+  ms.forEach((m) => {
+    const b = breakdown(p.position, m), played = num(m.min) > 0;
+    Object.keys(pts).forEach((k) => { pts[k] += b[k]; });
+    if (!played) return;
+    val.min += num(m.min); val.goals += num(m.g); val.assists += num(m.a);
+    if (num(m.ga) === 0) val.cs += 1;
+    val.saves += num(m.sv); val.bonus += num(m.bo); val.yc += num(m.yc); val.rc += num(m.rc);
+    val.pm += num(m.pm); val.og += num(m.og); val.gc += num(m.ga);
+  });
+  const keys = ['min', 'goals', 'assists', 'cs'];
+  if (p.position === 'gk') keys.push('saves');
+  keys.push('bonus', 'yc', 'rc', 'pm', 'og');
+  if (p.position === 'gk' || p.position === 'def') keys.push('gc');
+  const t = el('table', 'pf-table');
+  const h = el('tr'); ['الإحصائية', 'العدد', 'النقاط'].forEach((x) => h.appendChild(el('th', null, x))); t.appendChild(h);
+  keys.forEach((k) => {
+    const r = el('tr'); r.append(el('td', null, LBL[k]), el('td', 'n', String(val[k])), el('td', 'n ' + (pts[k] > 0 ? 'up' : pts[k] < 0 ? 'down' : ''), signed(pts[k])));
+    t.appendChild(r);
+  });
+  const r = el('tr', 'tot'); r.append(el('td', null, 'المجموع'), el('td', 'n', String(pStats(p).n) + ' مباراة'), el('td', 'n', String(totalPts(p))));
+  t.appendChild(r); w.appendChild(t);
+
+  const d = el('details', 'pf-rules'); d.appendChild(el('summary', null, 'كيف تُحسب النقاط؟'));
+  const ul = el('ul');
+  [
+    'اللعب 11 دقيقة فأكثر: 2 نقطة (أقل من 11 دقيقة: 1 نقطة)',
+    'هدف: مهاجم 4 · وسط 5 · مدافع أو حارس 6',
+    'تمريرة حاسمة: 3 نقاط',
+    'شباك نظيفة: حارس أو مدافع 4 نقاط · وسط نقطة واحدة',
+    'التصديات: نقطة لكل 3 تصديات للحارس',
+    'البونص: من 1 إلى 3 نقاط لأفضل لاعبين في المباراة',
+    'بطاقة صفراء -1 · حمراء -3 · ركلة جزاء ضائعة أو هدف عكسي -2',
+    'الحارس أو المدافع: -1 لكل هدفين يدخلان مرماه',
+  ].forEach((x) => ul.appendChild(el('li', null, x)));
+  d.appendChild(ul); w.appendChild(d);
+}
+function pfHistoryPane(p, w) {
+  const ms = [...(p.matches || [])].sort((a, b) => a.round - b.round);
+  if (!ms.length) { w.appendChild(el('div', 'empty-msg', 'لا توجد مباريات مسجّلة بعد.')); return; }
+  const pts = ms.map((m) => matchPts(p.position, m)), max = Math.max(1, ...pts.map(Math.abs));
+  const chart = el('div', 'pf-bars');
+  ms.forEach((m, i) => {
+    const c = el('div', 'pf-bar'), v = pts[i];
+    const bar = el('i'); bar.style.height = Math.max(6, (Math.abs(v) / max) * 100) + '%'; if (v < 0) bar.classList.add('neg');
+    c.append(el('b', null, String(v)), bar, el('span', null, 'ج' + m.round));
+    chart.appendChild(c);
+  });
+  w.appendChild(chart);
+  const played = ms.filter((m) => num(m.min) > 0), best = Math.max(...pts), worst = Math.min(...pts);
+  const tags = el('div', 'info-tags');
+  tags.append(el('span', 'tag', 'المجموع ' + totalPts(p)), el('span', 'tag', 'المتوسط ' + (played.length ? (totalPts(p) / played.length).toFixed(1) : '0.0')),
+    el('span', 'tag', 'الأفضل ' + best), el('span', 'tag', 'الأسوأ ' + worst));
+  w.appendChild(tags);
+}
+function pfActions(p) {
+  const a = el('div', 'actions pf-actions');
+  const on = isPicked(p.id);
+  const t = el('button', 'btn ' + (on ? 'ghost' : 'primary'), on ? 'إزالة من فريقي' : 'إضافة إلى فريقي'); t.type = 'button';
+  t.onclick = () => { closeModal('#profileModal'); on ? removeFromTeam(p.id) : addToTeam(p.id); };
+  a.appendChild(t);
+  if (S.admin) {
+    const e = el('button', 'btn ghost', 'تعديل بيانات اللاعب'); e.type = 'button';
+    e.onclick = () => { closeModal('#profileModal'); openPlayerForm(p.id); }; a.appendChild(e);
+  }
+  return a;
+}
+
+// ---------- نموذج نتيجة المباراة (للمشرف) ----------
+let mfPid = null, mfOrig = null;
+const mfIds = ['#mfRound', '#mfOpp', '#mfHome', '#mfGf', '#mfGa', '#mfMin', '#mfG', '#mfA', '#mfSv', '#mfBo', '#mfYc', '#mfRc', '#mfPm', '#mfOg'];
+function readMatchForm() {
+  const n = (id, max) => Math.min(max, Math.max(0, Math.round(Number($(id).value) || 0)));
+  return {
+    round: n('#mfRound', 99), opp: $('#mfOpp').value.trim().slice(0, 30), home: $('#mfHome').value === '1',
+    gf: n('#mfGf', 99), ga: n('#mfGa', 99), min: n('#mfMin', 120), g: n('#mfG', 20), a: n('#mfA', 20),
+    sv: n('#mfSv', 60), bo: n('#mfBo', 3), yc: n('#mfYc', 2), rc: n('#mfRc', 1), pm: n('#mfPm', 5), og: n('#mfOg', 5),
+  };
+}
+function mfPreview() {
+  const p = S.byId.get(mfPid); if (!p) return;
+  const m = readMatchForm(), b = breakdown(p.position, m), box = $('#mfLive');
+  box.innerHTML = '';
+  box.appendChild(el('div', 'live-total', 'نقاط هذه المباراة: ' + sumObj(b)));
+  const chips = el('div', 'live-chips');
+  Object.keys(b).forEach((k) => { if (b[k]) chips.appendChild(el('span', 'tag', `${LBL[k]} ${signed(b[k])}`)); });
+  box.appendChild(chips);
+  $('#mfSvWrap').hidden = p.position !== 'gk';
+}
+function openMatchForm(pid, round) {
+  if (!S.admin) return;
+  const p = S.byId.get(pid); if (!p) return;
+  mfPid = pid; mfOrig = round;
+  const m = round != null ? (p.matches || []).find((x) => x.round === round) : null;
+  $('#mfTitle').textContent = (m ? 'تعديل مباراة' : 'إضافة مباراة') + ' — ' + p.name;
+  const nextRound = Math.max(0, ...(p.matches || []).map((x) => x.round)) + 1;
+  const fx = !m ? [...(p.fixtures || [])].sort((a, b) => a.round - b.round)[0] : null;
+  $('#mfRound').value = m ? m.round : (fx ? fx.round : nextRound);
+  $('#mfOpp').value = m ? m.opp : (fx ? fx.opp : '');
+  $('#mfHome').value = (m ? m.home : (fx ? fx.home : true)) ? '1' : '0';
+  const v = { '#mfGf': 'gf', '#mfGa': 'ga', '#mfMin': 'min', '#mfG': 'g', '#mfA': 'a', '#mfSv': 'sv', '#mfBo': 'bo', '#mfYc': 'yc', '#mfRc': 'rc', '#mfPm': 'pm', '#mfOg': 'og' };
+  Object.entries(v).forEach(([id, k]) => { $(id).value = m ? m[k] : (k === 'min' ? 60 : 0); });
+  $('#mfErr').textContent = ''; $('#mfSave').disabled = false;
+  $('#mfDelete').hidden = !m; $('#mfDelete').textContent = 'حذف المباراة'; $('#mfDelete').dataset.armed = '';
+  mfPreview(); openModal('#matchModal');
+}
+mfIds.forEach((id) => $(id).addEventListener('input', mfPreview));
+$('#mfRound').addEventListener('change', () => {
+  const p = S.byId.get(mfPid); if (!p || mfOrig != null || $('#mfOpp').value.trim()) return;
+  const fx = (p.fixtures || []).find((f) => f.round === Number($('#mfRound').value));
+  if (fx) { $('#mfOpp').value = fx.opp; $('#mfHome').value = fx.home ? '1' : '0'; }
+});
+$('#matchForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const p = S.byId.get(mfPid); if (!p || !S.admin) return;
+  const m = readMatchForm(), err = (t) => { $('#mfErr').textContent = t; };
+  if (m.round < 1) return err('اكتب رقم الجولة');
+  if (!m.opp) return err('اكتب اسم الفريق الخصم');
+  if (m.min === 0 && (m.g || m.a || m.sv || m.bo || m.yc || m.rc || m.pm || m.og)) return err('اللاعب لم يشارك (الدقائق صفر) ولا يمكن تسجيل إحصائيات له');
+  const ms = (p.matches || []).filter((x) => x.round !== mfOrig);
+  if (ms.some((x) => x.round === m.round)) return err('هذه الجولة مسجّلة من قبل، عدّليها من القائمة');
+  ms.push(m); ms.sort((a, b) => a.round - b.round);
+  const fixtures = (p.fixtures || []).filter((f) => f.round !== m.round);
+  $('#mfSave').disabled = true;
+  try {
+    await patchPlayer(p.id, { matches: ms, fixtures, points: totalPts({ position: p.position, matches: ms }) });
+    closeModal('#matchModal'); toast('تم حفظ المباراة، ونقاط اللاعب تحدّثت');
+  } catch (er) { $('#mfSave').disabled = false; err(errText(er)); }
+};
+$('#mfDelete').onclick = async () => {
+  const b = $('#mfDelete'), p = S.byId.get(mfPid); if (!p) return;
+  if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'اضغطي مرة أخرى للتأكيد'; return; }
+  const ms = (p.matches || []).filter((x) => x.round !== mfOrig);
+  try {
+    await patchPlayer(p.id, { matches: ms, points: totalPts({ position: p.position, matches: ms }) });
+    closeModal('#matchModal'); toast('تم حذف المباراة');
+  } catch (er) { $('#mfErr').textContent = errText(er); }
+};
+
+// ---------- نموذج المباريات القادمة (للمشرف) ----------
+let fxPid = null;
+function fxTargets(p) { return $('#fxClub').checked ? S.players.filter((x) => x.club === p.club) : [p]; }
+function renderFixtureList() {
+  const p = S.byId.get(fxPid); const box = $('#fxList'); box.innerHTML = '';
+  if (!p) return;
+  const list = [...(p.fixtures || [])].sort((a, b) => a.round - b.round);
+  if (!list.length) { box.appendChild(el('div', 'empty-msg', 'لا توجد مباريات قادمة.')); return; }
+  list.forEach((f) => {
+    const r = el('div', 'fx-row');
+    const [bg, fg] = DIFF_COL[f.diff] || DIFF_COL[3];
+    const d = el('span', 'pf-diff', String(f.diff)); d.style.background = bg; d.style.color = fg;
+    const del = el('button', 'pf-edit', '✕'); del.type = 'button'; del.title = 'حذف';
+    del.onclick = async () => {
+      try {
+        await Promise.all(fxTargets(p).map((t) => patchPlayer(t.id, { fixtures: (t.fixtures || []).filter((x) => x.round !== f.round) })));
+        toast('تم حذف المباراة القادمة');
+      } catch (er) { $('#fxErr').textContent = errText(er); }
+    };
+    r.append(el('span', 'fx-t', `ج${f.round} · ضد ${f.opp} (${homeTxt(f.home)})`), d, del);
+    box.appendChild(r);
+  });
+}
+function openFixtureForm(pid) {
+  if (!S.admin) return;
+  const p = S.byId.get(pid); if (!p) return;
+  fxPid = pid;
+  $('#fxTitle').textContent = 'المباريات القادمة — ' + p.name;
+  $('#fxClubLbl').textContent = 'تطبيق على كل لاعبي فريق: ' + p.club;
+  $('#fxClub').checked = true;
+  const next = Math.max(0, ...(p.matches || []).map((x) => x.round), ...(p.fixtures || []).map((x) => x.round)) + 1;
+  $('#fxRound').value = next; $('#fxOpp').value = ''; $('#fxHome').value = '1'; $('#fxDiff').value = '3';
+  $('#fxErr').textContent = ''; renderFixtureList(); openModal('#fixtureModal');
+}
+$('#fixtureForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const p = S.byId.get(fxPid); if (!p || !S.admin) return;
+  const round = Math.round(Number($('#fxRound').value) || 0), opp = $('#fxOpp').value.trim().slice(0, 30);
+  const home = $('#fxHome').value === '1', diff = Math.min(5, Math.max(1, Math.round(Number($('#fxDiff').value) || 3)));
+  if (round < 1 || round > 99) { $('#fxErr').textContent = 'اكتب رقم جولة صحيح'; return; }
+  if (!opp) { $('#fxErr').textContent = 'اكتب اسم الفريق الخصم'; return; }
+  const targets = fxTargets(p).filter((t) => !(t.matches || []).some((m) => m.round === round));
+  if (!targets.length) { $('#fxErr').textContent = 'هذه الجولة لُعبت وسُجّلت نتيجتها'; return; }
+  $('#fxErr').textContent = '';
+  try {
+    await Promise.all(targets.map((t) => patchPlayer(t.id, {
+      fixtures: [...(t.fixtures || []).filter((f) => f.round !== round), { round, opp, home, diff }].sort((a, b) => a.round - b.round),
+    })));
+    $('#fxOpp').value = ''; $('#fxRound').value = round + 1; toast('تمت إضافة المباراة القادمة');
+  } catch (er) { $('#fxErr').textContent = errText(er); }
+};
 
 // ---------- حفظ الفريق ----------
 $('#saveTeam').onclick = async () => {
@@ -295,6 +674,7 @@ function setAdmin(on) {
   S.admin = on;
   $('#adminChip').hidden = !on; $('#addPlayer').hidden = !on;
   renderList();
+  if (S.profile && $('#profileModal').classList.contains('open')) renderProfile();
 }
 function setUser(u) {
   $('#googleBtn').hidden = !!u; $('#me').hidden = !u;
@@ -336,7 +716,7 @@ function openPlayerForm(id) {
   $('#pfSave').textContent = editing ? 'حفظ التعديلات' : 'حفظ اللاعب';
   $('#pfName').value = editing?.name || ''; $('#pfDesc').value = editing?.desc || '';
   $('#pfPos').value = editing?.position || 'mid'; $('#pfClub').value = editing?.club || '';
-  $('#pfPrice').value = editing?.price ?? 6; $('#pfPoints').value = editing?.points ?? 0;
+  $('#pfPrice').value = editing?.price ?? 6; $('#pfPoints').value = editing ? totalPts(editing) : 0;
   setPrev(photoUrl(editing));
   $('#pfDelete').hidden = !editing; $('#pfDelete').textContent = 'حذف اللاعب'; $('#pfDelete').dataset.armed = '';
   $('#pfErr').textContent = ''; $('#pfSave').disabled = false;
@@ -368,21 +748,20 @@ $('#playerForm').onsubmit = async (e) => {
   e.preventDefault();
   const body = {
     name: $('#pfName').value.trim(), desc: $('#pfDesc').value.trim(), position: $('#pfPos').value,
-    club: $('#pfClub').value.trim(), price: Number($('#pfPrice').value), points: Number($('#pfPoints').value || 0),
+    club: $('#pfClub').value.trim(), price: Number($('#pfPrice').value),
   };
+  body.points = totalPts({ position: body.position, matches: editing?.matches });
   if (!body.name) { $('#pfErr').textContent = 'اكتب اسم اللاعب'; return; }
   if (!body.club) { $('#pfErr').textContent = 'اكتب اسم الفريق'; return; }
   if (!(body.price >= 1 && body.price <= 20)) { $('#pfErr').textContent = 'السعر يجب أن يكون بين 1 و 20'; return; }
   body.price = Math.round(body.price * 10) / 10;
-  body.points = Math.round(body.points);
-  if (!(body.points >= -100 && body.points <= 9999)) { $('#pfErr').textContent = 'النقاط غير صحيحة'; return; }
   body.photo = photoData !== undefined ? photoData : (editing ? editing.photo || null : null);
   const now = Date.now();
   body.createdAt = editing ? editing.createdAt : now; body.updatedAt = now;
   $('#pfSave').disabled = true;
   try {
     const ref = editing ? doc(S.db, 'players', editing.id) : doc(collection(S.db, 'players'));
-    await setDoc(ref, body);
+    await setDoc(ref, body, { merge: true });
     closeModal('#playerModal'); toast(editing ? 'تم حفظ التعديلات' : 'تمت إضافة اللاعب');
   } catch (err) {
     $('#pfSave').disabled = false; $('#pfErr').textContent = errText(err);
@@ -405,6 +784,8 @@ function applyPlayers(list) {
   ORDER.forEach((k) => { if (S.slots[k]) S.slots[k] = S.slots[k].map((id) => (id && S.byId.has(id) ? id : null)); });
   S.bench = S.bench.map((id) => (id && S.byId.has(id) ? id : null));
   renderTeam(); renderList();
+  if (S.profile && $('#profileModal').classList.contains('open')) renderProfile();
+  if ($('#fixtureModal').classList.contains('open')) renderFixtureList();
 }
 
 let playersReady, playersLoaded;
@@ -445,7 +826,7 @@ async function loadMyTeam() {
   onAuthStateChanged(S.auth, (u) => {
     S.uid = u ? u.uid : null; S.hasTeam = false;
     setUser(u);
-   const admin = !!u && ADMIN_UID.split(',').map((x) => x.trim()).includes(u.uid);
+    const admin = !!u && ADMIN_UID.split(',').map((x) => x.trim()).filter(Boolean).includes(u.uid);
     setAdmin(admin);
     if (u) {
       if (!welcomed) toast(admin ? 'مرحبًا بك، تم دخول المشرف 👑' : `أهلًا ${u.displayName || ''}`);

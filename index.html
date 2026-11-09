@@ -135,8 +135,8 @@
           <input type="number" id="pfPrice" min="1" max="20" step="0.5" value="6">
         </div>
         <div>
-          <label for="pfPoints">النقاط</label>
-          <input type="number" id="pfPoints" min="-100" max="9999" step="1" value="0">
+          <label for="pfPoints">النقاط (تلقائي)</label>
+          <input type="text" id="pfPoints" value="0" disabled>
         </div>
       </div>
       <div class="err" id="pfErr"></div>
@@ -148,12 +148,61 @@
   </form>
 </div>
 
-<!-- نافذة بطاقة لاعب -->
-<div class="overlay" id="infoModal">
-  <div class="modal">
-    <div class="m-head"><h3>بطاقة اللاعب</h3><button type="button" class="x" data-close>✕</button></div>
-    <div class="m-body" id="infoBody"></div>
-  </div>
+<!-- بروفايل اللاعب -->
+<div class="overlay" id="profileModal" role="dialog" aria-modal="true">
+  <div class="modal pf-modal"><div id="profileBody"></div></div>
+</div>
+
+<!-- نتيجة مباراة (للمشرف) -->
+<div class="overlay" id="matchModal" role="dialog" aria-modal="true">
+  <form class="modal" id="matchForm" novalidate>
+    <div class="m-head"><h3 id="mfTitle">إضافة مباراة</h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body">
+      <div class="grid3">
+        <div><label for="mfRound">الجولة *</label><input type="number" id="mfRound" min="1" max="99" inputmode="numeric"></div>
+        <div><label for="mfOpp">الفريق الخصم *</label><input type="text" id="mfOpp" maxlength="30"></div>
+        <div><label for="mfHome">الملعب</label><select id="mfHome"><option value="1">ملعبنا</option><option value="0">خارج</option></select></div>
+        <div><label for="mfGf">أهداف فريقه</label><input type="number" id="mfGf" min="0" max="99" inputmode="numeric"></div>
+        <div><label for="mfGa">أهداف الخصم</label><input type="number" id="mfGa" min="0" max="99" inputmode="numeric"></div>
+        <div><label for="mfMin">الدقائق</label><input type="number" id="mfMin" min="0" max="120" inputmode="numeric"></div>
+        <div><label for="mfG">أهداف سجّلها</label><input type="number" id="mfG" min="0" max="20" inputmode="numeric"></div>
+        <div><label for="mfA">تمريرات حاسمة</label><input type="number" id="mfA" min="0" max="20" inputmode="numeric"></div>
+        <div><label for="mfBo">بونص (0-3)</label><input type="number" id="mfBo" min="0" max="3" inputmode="numeric"></div>
+        <div><label for="mfYc">صفراء</label><input type="number" id="mfYc" min="0" max="2" inputmode="numeric"></div>
+        <div><label for="mfRc">حمراء</label><input type="number" id="mfRc" min="0" max="1" inputmode="numeric"></div>
+        <div><label for="mfPm">ركلة جزاء ضائعة</label><input type="number" id="mfPm" min="0" max="5" inputmode="numeric"></div>
+        <div><label for="mfOg">هدف عكسي</label><input type="number" id="mfOg" min="0" max="5" inputmode="numeric"></div>
+        <div id="mfSvWrap"><label for="mfSv">تصديات الحارس</label><input type="number" id="mfSv" min="0" max="60" inputmode="numeric"></div>
+      </div>
+      <p class="hint">الشباك النظيفة والأهداف المستقبلة تُحسب تلقائيًا من أهداف الخصم.</p>
+      <div class="live" id="mfLive"></div>
+      <div class="err" id="mfErr"></div>
+      <div class="actions">
+        <button class="btn primary" type="submit" id="mfSave">حفظ المباراة</button>
+        <button class="btn danger" type="button" id="mfDelete" hidden>حذف المباراة</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- المباريات القادمة (للمشرف) -->
+<div class="overlay" id="fixtureModal" role="dialog" aria-modal="true">
+  <form class="modal" id="fixtureForm" novalidate>
+    <div class="m-head"><h3 id="fxTitle">المباريات القادمة</h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body">
+      <div id="fxList"></div>
+      <div class="grid3">
+        <div><label for="fxRound">الجولة</label><input type="number" id="fxRound" min="1" max="99" inputmode="numeric"></div>
+        <div><label for="fxOpp">الفريق الخصم</label><input type="text" id="fxOpp" maxlength="30"></div>
+        <div><label for="fxHome">الملعب</label><select id="fxHome"><option value="1">ملعبنا</option><option value="0">خارج</option></select></div>
+      </div>
+      <label for="fxDiff">صعوبة المباراة</label>
+      <select id="fxDiff"><option value="1">1 — سهلة جدًا</option><option value="2">2 — سهلة</option><option value="3" selected>3 — متوسطة</option><option value="4">4 — صعبة</option><option value="5">5 — صعبة جدًا</option></select>
+      <label class="chk"><input type="checkbox" id="fxClub" checked> <span id="fxClubLbl"></span></label>
+      <div class="err" id="fxErr"></div>
+      <div class="actions"><button class="btn primary" type="submit">+ إضافة</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>
+    </div>
+  </form>
 </div>
 
 <div class="toast" id="toast"></div>
