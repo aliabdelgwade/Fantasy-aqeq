@@ -9,7 +9,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 import {
-  SC, num, breakdown, sumObj, matchPts, totalPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, gwLabel,
+  SC, num, breakdown, sumObj, matchPts, totalPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
 } from './game.js';
 import { KO, KO_NAMES, standings, winner, resolveKo } from './cup.js';
 
@@ -150,6 +150,7 @@ function slotEl(id, pos, i, label) {
     b.appendChild(el('div', 'lbl', p.name));
     b.appendChild(el('div', 'sub', `${money(p.price)} · ${p.points}`));
     b.title = 'اضغط لإزالة اللاعب';
+    if (isOff(S.openGw, p.club)) { b.classList.add('off'); b.appendChild(el('div', 'offb', 'لا يلعب')); }
     b.onclick = () => removeFromTeam(id);
     wrap.appendChild(b);
     if (pos !== 'bench') {
@@ -243,6 +244,7 @@ function renderList() {
     const meta = el('div', 'meta'); meta.onclick = () => openProfile(p.id);
     const nm = el('div', 'nm', p.name); nm.appendChild(el('span', 'pos ' + p.position, POS[p.position].one));
     meta.append(nm, el('div', 'cl', p.club));
+    if (isOff(S.openGw, p.club)) meta.appendChild(el('div', 'offtag', '⛔ فريقه لا يلعب هذه الجولة'));
     const price = el('div', 'num'); price.append(el('b', null, money(p.price)), document.createTextNode('السعر'));
     const pts = el('div', 'num'); pts.append(el('b', null, String(p.points)), document.createTextNode('نقاط'));
     row.append(av, meta, price, pts);
@@ -936,6 +938,7 @@ async function fantasyStages(box) {
       const card = el('div', 'cup-card'); const open = g.deadline > now;
       card.append(el('b', null, `جولة ${g.n}`), el('span', 'tag ' + (g.final ? 'fin' : open ? 'open' : 'lock'), g.final ? 'منتهية' : open ? 'مفتوحة' : 'مقفلة'),
         el('div', 'cup-date', 'الموعد: ' + fmtDate(g.deadline)));
+      if (g.off && g.off.length) card.appendChild(el('div', 'cup-off', '⛔ لا تلعب: ' + g.off.join('، ')));
       if (!open) {
         totals.filter((x) => x.tt.perGw[g.n]).sort((x, y) => y.tt.perGw[g.n].net - x.tt.perGw[g.n].net).slice(0, 3).forEach((x, k) => {
           const l = el('div', 'cup-top'); l.append(el('span', null, ['🥇', '🥈', '🥉'][k] + ' ' + x.t.name), el('b', null, String(x.tt.perGw[g.n].net))); card.appendChild(l);
@@ -957,6 +960,7 @@ function renderGwBar() {
   const d = Math.floor(left / 864e5), h = Math.floor(left % 864e5 / 36e5), m = Math.floor(left % 36e5 / 6e4), sec = Math.floor(left % 6e4 / 1000);
   const p2 = (x) => String(x).padStart(2, '0');
   bar.append(el('b', null, gwLabel(S.openGw)), el('span', null, `الموعد النهائي: ${fmtDate(S.openGw.deadline)}`),
+    S.openGw.off && S.openGw.off.length ? el('span', 'offline', '⛔ فرق لا تلعب: ' + S.openGw.off.join('، ')) : el('span'),
     el('span', 'cd', `يتبقى ${d ? d + ' يوم ' : ''}${p2(h)}:${p2(m)}:${p2(sec)}`));
 }
 function renderChips() {
@@ -1047,7 +1051,7 @@ function renderGwAdmin() {
       el('span', g.final ? 'tag fin' : (g.deadline > Date.now() ? 'tag open' : 'tag lock'), g.final ? 'منتهية' : (g.deadline > Date.now() ? 'مفتوحة' : 'مقفلة')),
       g.pricesApplied ? el('span', 'tag fin', 'تم تحديث الأسعار') : el('span'));
     const acts = el('div', 'gw-acts');
-    const edit = el('button', 'btn ghost sm', 'تعديل الموعد');  edit.onclick = () => { $('#gwNum').value = g.n; $('#gwStage').value = g.stage || 'gw'; $('#gwDeadline').value = toLocalInput(g.deadline); };
+    const edit = el('button', 'btn ghost sm', 'تعديل الموعد');  edit.onclick = () => loadGwForm(g);
     const fin = el('button', 'btn ghost sm', g.final ? 'إعادة فتح الحساب' : 'إنهاء الجولة (حساب البدلاء والكابتن)'); 
     fin.onclick = async () => {
       try { await setDoc(doc(S.db, 'gameweeks', String(g.n)), { n: g.n, stage: g.stage || 'gw', deadline: g.deadline, final: !g.final }, { merge: true }); toast('تم'); }
@@ -1076,11 +1080,40 @@ function renderGwAdmin() {
     row.append(info, acts); box.appendChild(row);
   });
 }
+function clubNames() {
+  const s = new Set(S.players.map((p) => p.club).filter(Boolean));
+  (S.cup.groups || []).forEach((gr) => (gr.teams || []).forEach((t) => s.add(t)));
+  return [...s].sort((x, y) => x.localeCompare(y, 'ar'));
+}
+function drawOff(sel) {
+  const box = $('#gwOff'); box.innerHTML = '';
+  const names = clubNames();
+  if (!names.length) { box.appendChild(el('div', 'hint', 'أضيفي لاعبين أو مجموعات أولًا لتظهر الفرق هنا.')); return; }
+  names.forEach((n) => {
+    const l = el('label', 'offchk'); const i = el('input'); i.type = 'checkbox'; i.value = n; i.checked = sel.includes(n);
+    l.append(i, document.createTextNode(' ' + n)); box.appendChild(l);
+  });
+}
+function loadGwForm(g) {
+  $('#gwNum').value = g.n; $('#gwStage').value = g.stage || 'gw'; $('#gwDeadline').value = toLocalInput(g.deadline); drawOff(g.off || []);
+}
+$('#gwNum').onchange = () => { const g = S.gws.find((x) => x.n === Number($('#gwNum').value)); if (g) loadGwForm(g); };
+$('#gwPreset').onclick = async () => {
+  const dl0 = new Date($('#gwDeadline').value).getTime();
+  if (!Number.isFinite(dl0)) { $('#gwErr').textContent = 'اختاري أولًا موعد الجولة الأولى في خانة الموعد النهائي'; return; }
+  try {
+    for (let i = 0; i < PRESET.length; i++) {
+      const n = i + 1; if (S.gws.some((x) => x.n === n)) continue;
+      await setDoc(doc(S.db, 'gameweeks', String(n)), { n, stage: PRESET[i], deadline: dl0 + i * 7 * 864e5, off: [], final: false, pricesApplied: false });
+    }
+    $('#gwErr').textContent = ''; toast('تم إنشاء الجولات الثمانية. عدّلي موعد كل جولة من زر "تعديل الموعد"');
+  } catch (er) { $('#gwErr').textContent = errText(er); }
+};
 $('#gwAdmin').onclick = () => {
   if (!S.admin) return;
   const next = S.gws.length ? Math.max(...S.gws.map((g) => g.n)) + 1 : 1;
   $('#gwNum').value = next; $('#gwDeadline').value = toLocalInput(Date.now() + 7 * 864e5);
-  $('#gwErr').textContent = ''; renderGwAdmin(); openModal('#gwModal');
+  $('#gwErr').textContent = ''; $('#gwStage').value = 'gw'; drawOff([]); renderGwAdmin(); openModal('#gwModal');
 };
 $('#gwForm').onsubmit = async (e) => {
   e.preventDefault();
@@ -1089,7 +1122,7 @@ $('#gwForm').onsubmit = async (e) => {
   if (!Number.isFinite(dl)) { $('#gwErr').textContent = 'اختر تاريخ ووقت الموعد النهائي'; return; }
   try {
     const old = S.gws.find((g) => g.n === n);
-    await setDoc(doc(S.db, 'gameweeks', String(n)), { n, stage: $('#gwStage').value, deadline: dl, final: old ? old.final : false, pricesApplied: old ? !!old.pricesApplied : false }, { merge: true });
+    await setDoc(doc(S.db, 'gameweeks', String(n)), { n, stage: $('#gwStage').value, deadline: dl, off: [...document.querySelectorAll('#gwOff input:checked')].map((x) => x.value), final: old ? old.final : false, pricesApplied: old ? !!old.pricesApplied : false }, { merge: true });
     $('#gwErr').textContent = ''; toast('تم حفظ الجولة');
   } catch (er) { $('#gwErr').textContent = errText(er); }
 };

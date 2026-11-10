@@ -165,5 +165,7 @@ export function priceChanges(net, teamsN, players) {
 }
 
 // ---- مراحل البطولة (مثل كأس العالم) ----
-export const STAGES = { gw: 'الجولات', r16: 'دور الـ16', qf: 'ربع النهائي', sf: 'نصف النهائي', final: 'النهائي' };
-export const gwLabel = (g) => (!g.stage || g.stage === 'gw' ? `الجولة ${g.n}` : `${STAGES[g.stage]} (جولة ${g.n})`);
+export const STAGES = { gw: 'الجولات', r16: 'دور الـ16', qf1: 'ذهاب ربع النهائي', qf2: 'إياب ربع النهائي', sf1: 'ذهاب نصف النهائي', sf2: 'إياب نصف النهائي', final: 'النهائي', qf: 'ربع النهائي', sf: 'نصف النهائي' };
+export const PRESET = ['gw', 'gw', 'gw', 'qf1', 'qf2', 'sf1', 'sf2', 'final'];
+export const gwLabel = (g) => (!g.stage || g.stage === 'gw' ? `الجولة ${g.n}` : (STAGES[g.stage] || g.stage));
+export const isOff = (g, club) => !!(g && Array.isArray(g.off) && g.off.includes(club));

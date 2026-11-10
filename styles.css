@@ -373,3 +373,11 @@ tr.clickable{cursor:pointer}
 .brd-v{font-size:24px;font-weight:900}
 .brd-r.first .brd-v{font-size:30px}
 .brd-empty{padding:16px;text-align:center;opacity:.8;font-size:13px}
+
+.offtag{font-size:11px;color:#ff8a8a;font-weight:800;margin-top:2px}
+.slot.off{opacity:.55;outline:2px dashed #ff6b6b}
+.offb{font-size:10px;color:#ff8a8a;font-weight:800}
+.gwbar .offline{color:#ff8a8a;font-weight:800;flex-basis:100%}
+.cup-off{font-size:12px;color:#ff8a8a;font-weight:700}
+.offbox{display:flex;flex-wrap:wrap;gap:6px 12px;margin:6px 0 10px}
+.offchk{font-size:13px;display:flex;align-items:center;gap:4px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 8px}

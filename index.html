@@ -224,13 +224,15 @@
     <div class="m-body">
       <div id="gwList"></div>
       <div class="grid2">
-        <div><label for="gwStage">المرحلة</label><select id="gwStage"><option value="gw">جولات</option><option value="r16">دور الـ16</option><option value="qf">ربع النهائي</option><option value="sf">نصف النهائي</option><option value="final">النهائي</option></select></div>
+        <div><label for="gwStage">المرحلة</label><select id="gwStage"><option value="gw">جولة عادية</option><option value="qf1">ذهاب ربع النهائي</option><option value="qf2">إياب ربع النهائي</option><option value="sf1">ذهاب نصف النهائي</option><option value="sf2">إياب نصف النهائي</option><option value="final">النهائي</option><option value="r16">دور الـ16</option></select></div>
         <div><label for="gwNum">رقم الجولة</label><input type="number" id="gwNum" min="1" max="99" inputmode="numeric"></div>
         <div><label for="gwDeadline">الموعد النهائي</label><input type="datetime-local" id="gwDeadline"></div>
       </div>
+      <label>الفرق التي لا تلعب في هذه الجولة (تظهر للجميع في الموقع)</label>
+      <div id="gwOff" class="offbox"></div>
       <p class="hint">رقم الجولة هو نفسه رقم الجولة في نتائج المباريات. بعد انتهاء الموعد تُقفل التشكيلات تلقائيًا. بعد إدخال كل نتائج الجولة اضغط "إنهاء الجولة" ثم "تحديث الأسعار".</p>
       <div class="err" id="gwErr"></div>
-      <div class="actions"><button class="btn primary" type="submit">حفظ الجولة / الموعد</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>
+      <div class="actions"><button class="btn primary" type="submit">حفظ الجولة / الموعد</button><button class="btn ghost" type="button" id="gwPreset">إنشاء الجولات الثمانية</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>
     </div>
   </form>
 </div>
