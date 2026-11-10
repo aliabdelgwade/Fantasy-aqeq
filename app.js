@@ -11,7 +11,7 @@ import {
 import {
   SC, num, breakdown, sumObj, matchPts, totalPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
 } from './game.js';
-import { KO, KO_NAMES, standings, winner, resolveKo } from './cup.js';
+import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js';
 
 const POS = {
   gk: { one: 'حارس', many: 'حراس', slot: 'حارس' },
@@ -772,10 +772,13 @@ function groupCard(g, gi) {
 
 function bracketMatch(st, i, m) {
   const box = el('div', 'bm' + (S.admin ? ' adm' : ''));
-  const w = winner(m);
-  [['a', 'sa', 'pa'], ['b', 'sb', 'pb']].forEach(([k, s, p]) => {
+  const two = TWO_LEG.has(st), w = winner(m, two), g = agg(m, two);
+  [['a', 'sa', 'sa2', 'pa'], ['b', 'sb', 'sb2', 'pb']].forEach(([k, s, s2, p], idx) => {
     const r = el('div', 'bm-r' + (w && w === m[k] ? ' win' : ''));
-    r.append(el('span', 'bm-n', m[k] || '؟'), el('span', 'bm-s', sc(m[s]) + (Number.isFinite(m[p]) && m.sa === m.sb ? ` (${m[p]})` : '')));
+    const tot = idx === 0 ? g.a : g.b, tie = g.done && g.a === g.b;
+    const legs = two && Number.isFinite(m[s]) ? ` <small>(${m[s]}${Number.isFinite(m[s2]) ? ' · ' + m[s2] : ''})</small>` : '';
+    const sp = el('span', 'bm-s'); sp.innerHTML = sc(tot) + legs + (Number.isFinite(m[p]) && tie ? ` [${m[p]}]` : '');
+    r.append(el('span', 'bm-n', m[k] || '؟'), sp);
     box.appendChild(r);
   });
   if (S.admin) box.onclick = () => openKoForm(st, i);
@@ -905,7 +908,9 @@ function openKoForm(st, i) {
   $('#koTitle').textContent = `${KO_NAMES[st]}${KO[st] > 1 ? ' — مباراة ' + (i + 1) : ''}`;
   const r16 = st === 'r16';
   $('#koA').value = m.a || ''; $('#koB').value = m.b || ''; $('#koA').disabled = !r16; $('#koB').disabled = !r16;
-  $('#koSa').value = sc(m.sa); $('#koSb').value = sc(m.sb); $('#koPa').value = sc(m.pa); $('#koPb').value = sc(m.pb);
+  const two = TWO_LEG.has(st);
+  $('#koLegs').hidden = !two; $('#koLegs2').hidden = !two; $('#koLbl1').textContent = $('#koLbl2').textContent = two ? 'الذهاب' : 'النتيجة';
+  $('#koSa').value = sc(m.sa); $('#koSb').value = sc(m.sb); $('#koSa2').value = sc(m.sa2); $('#koSb2').value = sc(m.sb2); $('#koPa').value = sc(m.pa); $('#koPb').value = sc(m.pb);
   $('#koErr').textContent = r16 ? '' : 'الفريقان يُحددان تلقائيًا من نتائج الدور السابق.';
   openModal('#koModal');
 }
@@ -914,7 +919,7 @@ $('#koForm').onsubmit = async (e) => {
   const { st, i } = editK;
   const ko = JSON.parse(JSON.stringify(S.cup.ko || {}));
   ko[st] = ko[st] || []; for (let k = 0; k < KO[st]; k++) ko[st][k] = ko[st][k] || null;
-  const m = { sa: numOrNull($('#koSa').value), sb: numOrNull($('#koSb').value), pa: numOrNull($('#koPa').value), pb: numOrNull($('#koPb').value) };
+  const m = { sa: numOrNull($('#koSa').value), sb: numOrNull($('#koSb').value), sa2: TWO_LEG.has(st) ? numOrNull($('#koSa2').value) : null, sb2: TWO_LEG.has(st) ? numOrNull($('#koSb2').value) : null, pa: numOrNull($('#koPa').value), pb: numOrNull($('#koPb').value) };
   if (st === 'r16') { m.a = $('#koA').value.trim() || null; m.b = $('#koB').value.trim() || null; }
   ko[st][i] = m;
   try { await saveCup({ ...S.cup, ko }); closeModal('#koModal'); toast('تم الحفظ'); }
