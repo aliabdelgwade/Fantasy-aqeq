@@ -11,6 +11,7 @@ import {
 import {
   SC, num, breakdown, sumObj, matchPts, totalPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, gwLabel,
 } from './game.js';
+import { KO, KO_NAMES, standings, winner, resolveKo } from './cup.js';
 
 const POS = {
   gk: { one: 'حارس', many: 'حراس', slot: 'حارس' },
@@ -29,7 +30,7 @@ const S = {
   formation: '2-1-1', slots: {}, bench: [], filter: 'all', query: '', target: null,
   uid: null, hasTeam: false, db: null, auth: null, profile: null, sel: null,
   gws: [], openGw: null, allPicks: {}, teams: new Map(), picksT: 0, base: null, used: { wc: 0, fh: 0, bb: 0, tc: 0 }, ft: 1,
-  captain: null, vice: null, chip: null, loadedFor: null,
+  captain: null, vice: null, chip: null, loadedFor: null, cup: { groups: [], ko: {} },
 };
 
 // ---------- أدوات ----------
@@ -743,41 +744,207 @@ document.querySelectorAll('.tab').forEach((t) => t.onclick = () => {
 });
 
 // ---------- صفحة البطولة (مثل كأس العالم) ----------
-async function renderCup() {
+async function saveCup(cup) {
+  const body = JSON.parse(JSON.stringify({ groups: cup.groups || [], ko: cup.ko || {}, updatedAt: Date.now() }));
+  await setDoc(doc(S.db, 'cup', 'main'), body);
+}
+const sc = (v) => (Number.isFinite(v) ? String(v) : '');
+
+function groupCard(g, gi) {
+  const card = el('div', 'grp');
+  const head = el('div', 'grp-h'); head.appendChild(el('b', null, g.name || `المجموعة ${gi + 1}`));
+  if (S.admin) { const b = el('button', 'btn ghost sm', 'تعديل'); b.type = 'button'; b.onclick = () => openGroupForm(gi); head.appendChild(b); }
+  card.appendChild(head);
+  const t = el('table', 'grp-t');
+  const h = el('tr'); ['#', 'الفريق', 'لعب', 'ف', 'ت', 'خ', 'فرق', 'نقاط'].forEach((x) => h.appendChild(el('th', null, x))); t.appendChild(h);
+  standings(g).forEach((r, i) => {
+    const tr = el('tr', i < 2 ? 'qual' : '');
+    tr.append(el('td', null, String(i + 1)), el('td', 'tn', r.team), el('td', null, String(r.p)), el('td', null, String(r.w)),
+      el('td', null, String(r.d)), el('td', null, String(r.l)), el('td', null, (r.gd > 0 ? '+' : '') + r.gd), el('td', 'pts', String(r.pts)));
+    t.appendChild(tr);
+  });
+  if (!(g.teams || []).length) { const tr = el('tr'); const td = el('td', 'cup-empty-td', 'لم تُضف فرق بعد'); td.colSpan = 8; tr.appendChild(td); t.appendChild(tr); }
+  card.appendChild(t);
+  return card;
+}
+
+function bracketMatch(st, i, m) {
+  const box = el('div', 'bm' + (S.admin ? ' adm' : ''));
+  const w = winner(m);
+  [['a', 'sa', 'pa'], ['b', 'sb', 'pb']].forEach(([k, s, p]) => {
+    const r = el('div', 'bm-r' + (w && w === m[k] ? ' win' : ''));
+    r.append(el('span', 'bm-n', m[k] || '؟'), el('span', 'bm-s', sc(m[s]) + (Number.isFinite(m[p]) && m.sa === m.sb ? ` (${m[p]})` : '')));
+    box.appendChild(r);
+  });
+  if (S.admin) box.onclick = () => openKoForm(st, i);
+  return box;
+}
+function renderBracket(wrap) {
+  const R = resolveKo(S.cup.ko);
+  const col = (st, from, to, cls) => {
+    const c = el('div', 'bcol ' + cls); c.appendChild(el('div', 'bcol-t', KO_NAMES[st]));
+    const inner = el('div', 'bcol-in');
+    for (let i = from; i < to; i++) inner.appendChild(bracketMatch(st, i, R[st][i]));
+    c.appendChild(inner); return c;
+  };
+  const mid = el('div', 'bcol bmid');
+  const champ = el('div', 'champ'); champ.append(el('div', 'trophy', '🏆'), el('div', 'champ-t', 'بطل البطولة'), el('div', 'champ-n', R.champion || '؟'));
+  mid.appendChild(champ);
+  mid.appendChild(el('div', 'bcol-t', KO_NAMES.final)); mid.appendChild(bracketMatch('final', 0, R.final[0]));
+  mid.appendChild(el('div', 'bcol-t third', KO_NAMES.third)); mid.appendChild(bracketMatch('third', 0, R.third[0]));
+  wrap.append(col('r16', 0, 4, 'l'), col('qf', 0, 2, 'l'), col('sf', 0, 1, 'l'), mid, col('sf', 1, 2, 'r'), col('qf', 2, 4, 'r'), col('r16', 4, 8, 'r'));
+}
+
+function renderCup() {
   const box = $('#cupBody'); box.innerHTML = '';
+  const gh = el('div', 'cup-sec-h'); gh.appendChild(el('h3', null, 'المجموعات'));
+  if (S.admin) { const b = el('button', 'btn primary sm', '+ مجموعة'); b.type = 'button'; b.onclick = () => openGroupForm(-1); gh.appendChild(b); }
+  box.appendChild(gh);
+  const groups = S.cup.groups || [];
+  if (!groups.length) box.appendChild(el('div', 'cup-empty', S.admin ? 'اضغط "+ مجموعة" وأضف الفرق.' : 'لم تُعلن المجموعات بعد'));
+  else { const grid = el('div', 'grp-grid'); groups.forEach((g, i) => grid.appendChild(groupCard(g, i))); box.appendChild(grid); }
+
+  const bh = el('div', 'cup-sec-h'); bh.appendChild(el('h3', null, 'الأدوار الإقصائية'));
+  box.appendChild(bh);
+  if (S.admin) box.appendChild(el('p', 'hint', 'اضغط على أي مباراة لإدخال الفرق (دور الـ16 فقط) والنتيجة. الفائز ينتقل للدور التالي تلقائيًا.'));
+  const scroll = el('div', 'bracket-scroll'); const br = el('div', 'bracket'); renderBracket(br); scroll.appendChild(br); box.appendChild(scroll);
+
+  const sh = el('div', 'cup-sec-h'); sh.appendChild(el('h3', null, 'إحصائيات اللاعبين')); box.appendChild(sh);
+  renderBoards(box);
+
+  const d = el('details', 'cup-fan'); d.appendChild(el('summary', null, 'مراحل جولات الفانتازي'));
+  const inner = el('div'); d.appendChild(inner); box.appendChild(d);
+  fantasyStages(inner);
+}
+
+// لوحات المتصدرين (تُحسب تلقائيًا من نتائج المباريات التي يدخلها المشرف)
+const sumM = (p, f) => (p.matches || []).reduce((s, m) => s + f(m, p), 0);
+const BOARDS = [
+  { t: 'النقاط', f: (p) => totalPts(p) },
+  { t: 'الأهداف', f: (p) => sumM(p, (m) => num(m.g)) },
+  { t: 'التمريرات الحاسمة', f: (p) => sumM(p, (m) => num(m.a)) },
+  { t: 'الشباك النظيفة', sub: 'حراس ومدافعون', f: (p) => (p.position === 'gk' || p.position === 'def' ? sumM(p, (m) => (num(m.min) > 0 && num(m.ga) === 0 ? 1 : 0)) : 0) },
+  { t: 'البطاقات الصفراء', f: (p) => sumM(p, (m) => num(m.yc)), cls: 'yc' },
+  { t: 'البطاقات الحمراء', f: (p) => sumM(p, (m) => num(m.rc)), cls: 'rc' },
+];
+function renderBoards(box) {
+  const grid = el('div', 'brd-grid');
+  BOARDS.forEach((b) => {
+    const rows = S.players.map((p) => ({ p, v: b.f(p) })).filter((x) => x.v > 0).sort((x, y) => y.v - x.v || x.p.name.localeCompare(y.p.name, 'ar')).slice(0, 10);
+    const card = el('div', 'brd ' + (b.cls || ''));
+    const h = el('div', 'brd-h'); h.appendChild(el('b', null, b.t)); if (b.sub) h.appendChild(el('span', null, b.sub)); card.appendChild(h);
+    if (!rows.length) card.appendChild(el('div', 'brd-empty', 'لا توجد بيانات بعد'));
+    rows.forEach((x, i) => {
+      const r = el('div', 'brd-r' + (i === 0 ? ' first' : '')); r.onclick = () => openProfile(x.p.id);
+      const who = el('div', 'brd-w'); who.append(el('b', null, x.p.name), el('span', null, x.p.club));
+      r.append(el('span', 'brd-i', String(i + 1)), avatar(x.p, 'brd-av'), who, el('span', 'brd-v', String(x.v)));
+      card.appendChild(r);
+    });
+    grid.appendChild(card);
+  });
+  box.appendChild(grid);
+}
+
+// نموذج المجموعة (للمشرف)
+let editG = -1;
+function openGroupForm(i) {
+  if (!S.admin) return;
+  editG = i; const g = i >= 0 ? S.cup.groups[i] : { name: 'المجموعة ' + ((S.cup.groups || []).length + 1), teams: [], res: [] };
+  $('#grName').value = g.name || ''; $('#grTeams').value = (g.teams || []).join('\n');
+  $('#grDel').hidden = i < 0; $('#grDel').textContent = 'حذف المجموعة'; $('#grDel').dataset.armed = '';
+  $('#grErr').textContent = ''; drawGroupRes(g.res || []); openModal('#grpModal');
+}
+function groupTeamsFromForm() { return [...new Set($('#grTeams').value.split('\n').map((x) => x.trim()).filter(Boolean))]; }
+function drawGroupRes(res) {
+  const teams = groupTeamsFromForm(); const box = $('#grRes'); box.innerHTML = '';
+  if (teams.length < 2) { box.appendChild(el('div', 'hint', 'أضف فريقين على الأقل لتظهر المباريات.')); return; }
+  for (let i = 0; i < teams.length; i++) for (let j = i + 1; j < teams.length; j++) {
+    const old = res.find((r) => (r.a === teams[i] && r.b === teams[j]) || (r.a === teams[j] && r.b === teams[i]));
+    const flip = old && old.a === teams[j];
+    const sa = old ? (flip ? old.sb : old.sa) : null, sb = old ? (flip ? old.sa : old.sb) : null;
+    const row = el('div', 'res-row'); row.dataset.a = teams[i]; row.dataset.b = teams[j];
+    const ia = el('input'); ia.type = 'number'; ia.min = 0; ia.max = 99; ia.value = sc(sa); ia.className = 'ra';
+    const ib = el('input'); ib.type = 'number'; ib.min = 0; ib.max = 99; ib.value = sc(sb); ib.className = 'rb';
+    row.append(el('span', 'rn', teams[i]), ia, el('span', null, '–'), ib, el('span', 'rn', teams[j]));
+    box.appendChild(row);
+  }
+}
+const numOrNull = (v) => { const t = String(v).trim(); if (t === '') return null; const n = Math.round(Number(t)); return Number.isFinite(n) && n >= 0 && n <= 99 ? n : null; };
+$('#grTeams').oninput = () => {
+  const cur = collectRes(); drawGroupRes(cur);
+};
+function collectRes() {
+  return [...document.querySelectorAll('#grRes .res-row')].map((r) => ({
+    a: r.dataset.a, b: r.dataset.b, sa: numOrNull(r.querySelector('.ra').value), sb: numOrNull(r.querySelector('.rb').value),
+  })).filter((r) => r.sa !== null && r.sb !== null);
+}
+$('#grpForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const name = $('#grName').value.trim(), teams = groupTeamsFromForm();
+  if (!name) { $('#grErr').textContent = 'اكتب اسم المجموعة'; return; }
+  if (teams.length < 2 || teams.length > 8) { $('#grErr').textContent = 'من 2 إلى 8 فرق (اسم في كل سطر)'; return; }
+  const groups = [...(S.cup.groups || [])]; const g = { name, teams, res: collectRes() };
+  if (editG >= 0) groups[editG] = g; else groups.push(g);
+  try { await saveCup({ ...S.cup, groups }); closeModal('#grpModal'); toast('تم حفظ المجموعة'); }
+  catch (er) { $('#grErr').textContent = errText(er); }
+};
+$('#grDel').onclick = async () => {
+  const b = $('#grDel');
+  if (!b.dataset.armed) { b.dataset.armed = '1'; b.textContent = 'اضغط مرة أخرى للتأكيد'; return; }
+  try { await saveCup({ ...S.cup, groups: S.cup.groups.filter((_, i) => i !== editG) }); closeModal('#grpModal'); toast('تم حذف المجموعة'); }
+  catch (er) { $('#grErr').textContent = errText(er); }
+};
+
+// نموذج مباراة إقصائية (للمشرف)
+let editK = null;
+function openKoForm(st, i) {
+  if (!S.admin) return;
+  editK = { st, i }; const m = resolveKo(S.cup.ko)[st][i];
+  $('#koTitle').textContent = `${KO_NAMES[st]}${KO[st] > 1 ? ' — مباراة ' + (i + 1) : ''}`;
+  const r16 = st === 'r16';
+  $('#koA').value = m.a || ''; $('#koB').value = m.b || ''; $('#koA').disabled = !r16; $('#koB').disabled = !r16;
+  $('#koSa').value = sc(m.sa); $('#koSb').value = sc(m.sb); $('#koPa').value = sc(m.pa); $('#koPb').value = sc(m.pb);
+  $('#koErr').textContent = r16 ? '' : 'الفريقان يُحددان تلقائيًا من نتائج الدور السابق.';
+  openModal('#koModal');
+}
+$('#koForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const { st, i } = editK;
+  const ko = JSON.parse(JSON.stringify(S.cup.ko || {}));
+  ko[st] = ko[st] || []; for (let k = 0; k < KO[st]; k++) ko[st][k] = ko[st][k] || null;
+  const m = { sa: numOrNull($('#koSa').value), sb: numOrNull($('#koSb').value), pa: numOrNull($('#koPa').value), pb: numOrNull($('#koPb').value) };
+  if (st === 'r16') { m.a = $('#koA').value.trim() || null; m.b = $('#koB').value.trim() || null; }
+  ko[st][i] = m;
+  try { await saveCup({ ...S.cup, ko }); closeModal('#koModal'); toast('تم الحفظ'); }
+  catch (er) { $('#koErr').textContent = errText(er); }
+};
+
+// مراحل جولات الفانتازي (قسم ثانوي)
+async function fantasyStages(box) {
   box.appendChild(el('div', 'empty-msg', 'جارٍ التحميل…'));
-  try { await loadPicks(true); } catch (e) { box.innerHTML = ''; box.appendChild(el('div', 'empty-msg', errText(e))); return; }
+  try { await loadPicks(false); } catch (e) { box.innerHTML = ''; box.appendChild(el('div', 'empty-msg', errText(e))); return; }
   box.innerHTML = '';
   const now = Date.now();
   const totals = [...S.teams.entries()].map(([uid, t]) => ({ uid, t, tt: teamTotals(S.gws, S.allPicks[uid] || {}, S.byId, S.rules.formations, now) }));
-  Object.keys(STAGES).forEach((st, idx) => {
+  Object.keys(STAGES).forEach((st) => {
     const list = S.gws.filter((g) => (g.stage || 'gw') === st);
     const sec = el('div', 'cup-stage' + (st === 'final' ? ' cup-final' : ''));
-    sec.appendChild(el('h3', null, (st === 'final' ? '🏆 ' : '') + STAGES[st]));
+    sec.appendChild(el('h3', null, STAGES[st]));
     if (!list.length) { sec.appendChild(el('div', 'cup-empty', 'لم يُعلن بعد')); box.appendChild(sec); return; }
     const grid = el('div', 'cup-grid');
     list.forEach((g) => {
-      const card = el('div', 'cup-card');
-      const open = g.deadline > now;
-      card.append(el('b', null, st === 'gw' ? `الجولة ${g.n}` : `جولة ${g.n}`),
-        el('span', 'tag ' + (g.final ? 'fin' : open ? 'open' : 'lock'), g.final ? 'منتهية' : open ? 'مفتوحة' : 'مقفلة'),
+      const card = el('div', 'cup-card'); const open = g.deadline > now;
+      card.append(el('b', null, `جولة ${g.n}`), el('span', 'tag ' + (g.final ? 'fin' : open ? 'open' : 'lock'), g.final ? 'منتهية' : open ? 'مفتوحة' : 'مقفلة'),
         el('div', 'cup-date', 'الموعد: ' + fmtDate(g.deadline)));
       if (!open) {
-        const top = totals.filter((x) => x.tt.perGw[g.n]).sort((a, b) => b.tt.perGw[g.n].net - a.tt.perGw[g.n].net).slice(0, 3);
-        top.forEach((x, i) => {
-          const l = el('div', 'cup-top'); l.append(el('span', null, ['🥇', '🥈', '🥉'][i] + ' ' + x.t.name), el('b', null, String(x.tt.perGw[g.n].net)));
-          card.appendChild(l);
+        totals.filter((x) => x.tt.perGw[g.n]).sort((x, y) => y.tt.perGw[g.n].net - x.tt.perGw[g.n].net).slice(0, 3).forEach((x, k) => {
+          const l = el('div', 'cup-top'); l.append(el('span', null, ['🥇', '🥈', '🥉'][k] + ' ' + x.t.name), el('b', null, String(x.tt.perGw[g.n].net))); card.appendChild(l);
         });
       }
       grid.appendChild(card);
     });
     sec.appendChild(grid); box.appendChild(sec);
   });
-  const champ = totals.sort((a, b) => b.tt.total - a.tt.total)[0];
-  if (champ && champ.tt.total > 0) {
-    const f = el('div', 'cup-champ'); f.append(el('span', null, 'المتصدر الحالي'), el('b', null, `${champ.t.name} — ${champ.tt.total} نقطة`));
-    box.prepend(f);
-  }
 }
 
 // ---------- الجولات: الشريط والرقائق ----------
@@ -835,6 +1002,7 @@ setInterval(() => {
 // ---------- المشرف ----------
 function setAdmin(on) {
   S.admin = on;
+  if (!$('#tab-cup').hidden) renderCup();
   $('#adminChip').hidden = !on; $('#addPlayer').hidden = !on; $('#gwAdmin').hidden = !on;
   renderList();
   if (S.profile && $('#profileModal').classList.contains('open')) renderProfile();
@@ -1007,6 +1175,7 @@ function applyPlayers(list) {
   ORDER.forEach((k) => { if (S.slots[k]) S.slots[k] = S.slots[k].map((id) => (id && S.byId.has(id) ? id : null)); });
   S.bench = S.bench.map((id) => (id && S.byId.has(id) ? id : null));
   renderTeam(); renderList();
+  if (!$('#tab-cup').hidden) renderCup();
   if (S.profile && $('#profileModal').classList.contains('open')) renderProfile();
   if ($('#fixtureModal').classList.contains('open')) renderFixtureList();
 }
@@ -1042,6 +1211,10 @@ playersReady = new Promise((r) => { playersLoaded = r; });
       refreshGame(true);
     },
     (e) => toast(errText(e), true));
+
+  onSnapshot(doc(S.db, 'cup', 'main'),
+    (snap) => { S.cup = snap.exists() ? snap.data() : { groups: [], ko: {} }; if (!$('#tab-cup').hidden) renderCup(); },
+    () => {});
 
   getRedirectResult(S.auth).catch((e) => toast(errText(e), true));
   let welcomed = false;

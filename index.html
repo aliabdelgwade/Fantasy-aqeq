@@ -96,7 +96,7 @@
 
   <!-- ====== البطولة ====== -->
   <section id="tab-cup" class="panel table-panel" hidden>
-    <h2>مراحل البطولة</h2>
+    <h2>🏆 البطولة</h2>
     <div id="cupBody"></div>
   </section>
 
@@ -241,6 +241,41 @@
     <div class="m-head"><h3 id="tmTitle"></h3><button type="button" class="x" data-close>✕</button></div>
     <div class="m-body" id="teamBody"></div>
   </div>
+</div>
+
+<!-- مجموعة (للمشرف) -->
+<div class="overlay" id="grpModal" role="dialog" aria-modal="true">
+  <form class="modal" id="grpForm" novalidate>
+    <div class="m-head"><h3>المجموعة</h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body">
+      <label for="grName">اسم المجموعة</label><input type="text" id="grName" maxlength="30">
+      <label for="grTeams">الفرق (اسم فريق في كل سطر)</label><textarea id="grTeams" rows="5" maxlength="400"></textarea>
+      <label>نتائج المباريات (اتركيها فارغة إذا لم تُلعب)</label>
+      <div id="grRes"></div>
+      <div class="err" id="grErr"></div>
+      <div class="actions"><button class="btn primary" type="submit">حفظ</button><button class="btn danger" type="button" id="grDel" hidden>حذف المجموعة</button></div>
+    </div>
+  </form>
+</div>
+
+<!-- مباراة إقصائية (للمشرف) -->
+<div class="overlay" id="koModal" role="dialog" aria-modal="true">
+  <form class="modal" id="koForm" novalidate>
+    <div class="m-head"><h3 id="koTitle"></h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body">
+      <div class="grid2">
+        <div><label for="koA">الفريق الأول</label><input type="text" id="koA" maxlength="30"></div>
+        <div><label for="koB">الفريق الثاني</label><input type="text" id="koB" maxlength="30"></div>
+        <div><label for="koSa">أهداف الأول</label><input type="number" id="koSa" min="0" max="99" inputmode="numeric"></div>
+        <div><label for="koSb">أهداف الثاني</label><input type="number" id="koSb" min="0" max="99" inputmode="numeric"></div>
+        <div><label for="koPa">ركلات ترجيح الأول</label><input type="number" id="koPa" min="0" max="99" inputmode="numeric"></div>
+        <div><label for="koPb">ركلات ترجيح الثاني</label><input type="number" id="koPb" min="0" max="99" inputmode="numeric"></div>
+      </div>
+      <p class="hint">ركلات الترجيح فقط عند التعادل.</p>
+      <div class="err" id="koErr"></div>
+      <div class="actions"><button class="btn primary" type="submit">حفظ</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>
+    </div>
+  </form>
 </div>
 
 <div class="toast" id="toast"></div>

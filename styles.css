@@ -318,3 +318,58 @@ tr.clickable{cursor:pointer}
 .cup-date{font-size:12px;color:var(--muted)}
 .cup-top{display:flex;justify-content:space-between;font-size:13px}
 .cup-champ{background:linear-gradient(90deg,#f4c430,#e8a21a);color:#1b1500;border-radius:12px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;font-weight:800}
+
+/* ===== البطولة: مجموعات + شجرة الأدوار ===== */
+.cup-sec-h{display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px}
+.cup-sec-h h3{margin:0;font-size:17px;border-inline-start:4px solid var(--yellow);padding-inline-start:8px}
+.grp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.grp{background:linear-gradient(180deg,#14213d,#0f1a30);border:1px solid #2b4a8a;border-radius:12px;padding:8px}
+.grp-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;color:var(--yellow)}
+.grp-t{width:100%;border-collapse:collapse;font-size:12.5px}
+.grp-t th{color:var(--muted);font-weight:700;padding:4px 3px;text-align:center}
+.grp-t td{padding:5px 3px;text-align:center;border-top:1px solid #22304f}
+.grp-t td.tn{text-align:start;font-weight:700;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grp-t td.pts{font-weight:900}
+.grp-t tr.qual td:first-child{box-shadow:inset 3px 0 0 #1f8a4c}
+.cup-empty-td{color:var(--muted);padding:10px}
+.res-row{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:13px}
+.res-row .rn{flex:1;text-align:center;font-weight:700}
+.res-row input{width:54px;text-align:center}
+.bracket-scroll{overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch}
+.bracket{direction:ltr;display:grid;grid-template-columns:repeat(7,minmax(150px,1fr));gap:10px;min-width:1100px;padding:6px 2px;align-items:stretch}
+.bcol{display:flex;flex-direction:column}
+.bcol-t{text-align:center;font-size:12px;color:var(--yellow);font-weight:800;margin-bottom:6px;direction:rtl}
+.bcol-t.third{margin-top:18px}
+.bcol-in{flex:1;display:flex;flex-direction:column;justify-content:space-around;gap:8px}
+.bm{background:#16223d;border:1px solid #2b4a8a;border-radius:8px;overflow:hidden;direction:rtl}
+.bm.adm{cursor:pointer}.bm.adm:hover{border-color:var(--yellow)}
+.bm-r{display:flex;justify-content:space-between;gap:6px;padding:6px 8px;font-size:12.5px}
+.bm-r+.bm-r{border-top:1px solid #22304f}
+.bm-r.win{background:#1c3a2a;font-weight:900}
+.bm-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bm-s{font-weight:900;direction:ltr}
+.bmid{justify-content:center;gap:4px}
+.champ{text-align:center;margin-bottom:8px}
+.trophy{font-size:44px;line-height:1}
+.champ-t{font-size:12px;color:var(--muted);direction:rtl}
+.champ-n{font-weight:900;font-size:15px;color:var(--yellow);direction:rtl}
+.cup-fan{margin-top:20px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.cup-fan summary{cursor:pointer;font-weight:800}
+
+/* ===== لوحات المتصدرين ===== */
+.brd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}
+.brd{background:linear-gradient(180deg,#5b2bd1,#3a168f);border-radius:14px;overflow:hidden;color:#fff}
+.brd.yc{background:linear-gradient(180deg,#a8861a,#5c4a0c)}
+.brd.rc{background:linear-gradient(180deg,#a3242b,#561015)}
+.brd-h{padding:10px 14px;background:rgba(0,0,0,.28);display:flex;justify-content:space-between;align-items:baseline}
+.brd-h b{font-size:17px;font-weight:900}.brd-h span{font-size:11px;opacity:.8}
+.brd-r{display:flex;align-items:center;gap:10px;padding:7px 12px;border-top:1px solid rgba(255,255,255,.14);cursor:pointer}
+.brd-r:hover{background:rgba(255,255,255,.08)}
+.brd-i{width:20px;font-weight:900;font-size:18px;opacity:.85;text-align:center}
+.brd-av{width:34px;height:34px;border-radius:50%;overflow:hidden;background:#dfe7f5;display:grid;place-items:center;flex:none}
+.brd-av img{width:100%;height:100%;object-fit:cover}.brd-av .ini{color:#1d2f5d;font-weight:900}
+.brd-w{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
+.brd-w b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.brd-w span{font-size:11px;opacity:.75}
+.brd-v{font-size:24px;font-weight:900}
+.brd-r.first .brd-v{font-size:30px}
+.brd-empty{padding:16px;text-align:center;opacity:.8;font-size:13px}

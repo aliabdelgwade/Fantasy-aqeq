@@ -82,6 +82,13 @@ service cloud.firestore {
       allow delete: if isAdmin() || (request.auth != null && request.auth.uid == uid);
     }
 
+    // البطولة (المجموعات والأدوار الإقصائية): الكل يقرأ والمشرفة فقط تكتب
+    match /cup/{id} {
+      allow read: if true;
+      allow write: if isAdmin() && request.resource.data.keys().hasOnly(['groups', 'ko', 'updatedAt'])
+                   && request.resource.data.groups is list && request.resource.data.groups.size() <= 16;
+    }
+
     // الجولات: الكل يقرأ، والمشرفة فقط تنشئ وتعدّل
     match /gameweeks/{gw} {
       allow read: if true;
