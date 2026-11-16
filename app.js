@@ -289,24 +289,30 @@ async function ensureTeams() {
   try { await loadPicks(false); if ($('#profileModal').classList.contains('open')) renderProfile(); }
   catch { /* نسبة الاختيار اختيارية */ }
 }
-async function loadPicks(force) {
-  if (!S.db) return;
-  if (!force && S.picksT && Date.now() - S.picksT < 30000) return;
-  const gws = S.gws.slice();
-  const [ts, ...ps] = await Promise.all([getDocs(collection(S.db, 'teams')),
-    ...gws.map((g) => getDocs(collection(S.db, 'gameweeks', String(g.n), 'picks')))]);
-  S.teams = new Map(ts.docs.map((d) => [d.id, d.data()]));
-  const all = {};
-  ps.forEach((sn, i) => sn.docs.forEach((d) => { (all[d.id] = all[d.id] || {})[gws[i].n] = d.data(); }));
-  S.allPicks = all; S.picksT = Date.now();
-  const counts = {}; let total = 0;
-  Object.keys(all).forEach((uid) => {
-    if (!S.teams.has(uid)) return;
-    const ns = Object.keys(all[uid]).map(Number); if (!ns.length) return;
-    const l = all[uid][Math.max(...ns)]; total++;
-    [...l.starters, ...l.bench].forEach((id) => { counts[id] = (counts[id] || 0) + 1; });
-  });
-  S.sel = { t: Date.now(), total, counts };
+// تحميل الفرق واختياراتها. آخر استدعاء هو الذي يحدد النتيجة (لا تُكتب نتيجة قديمة فوق جديدة)
+let picksP = null, picksSeq = 0;
+function loadPicks(force) {
+  if (!S.db) return Promise.resolve();
+  if (!force && S.picksT && Date.now() - S.picksT < 30000 && picksP) return picksP;
+  const my = ++picksSeq; const gws = S.gws.slice();
+  picksP = (async () => {
+    const [ts, ...ps] = await Promise.all([getDocs(collection(S.db, 'teams')),
+      ...gws.map((g) => getDocs(collection(S.db, 'gameweeks', String(g.n), 'picks')))]);
+    if (my !== picksSeq) return picksP; // جاء استدعاء أحدث، ننتظر نتيجته
+    S.teams = new Map(ts.docs.map((d) => [d.id, d.data()]));
+    const all = {};
+    ps.forEach((sn, i) => sn.docs.forEach((d) => { (all[d.id] = all[d.id] || {})[gws[i].n] = d.data(); }));
+    S.allPicks = all; S.picksT = Date.now(); S.picksFor = gws.map((g) => g.n);
+    const counts = {}; let total = 0;
+    Object.keys(all).forEach((uid) => {
+      if (!S.teams.has(uid)) return;
+      const ns = Object.keys(all[uid]).map(Number); if (!ns.length) return;
+      const l = all[uid][Math.max(...ns)]; total++;
+      [...l.starters, ...l.bench].forEach((id) => { counts[id] = (counts[id] || 0) + 1; });
+    });
+    S.sel = { t: Date.now(), total, counts };
+  })();
+  return picksP;
 }
 async function patchPlayer(id, patch) {
   await setDoc(doc(S.db, 'players', id), { ...patch, updatedAt: Date.now() }, { merge: true });
@@ -1050,6 +1056,7 @@ function resizeLogo(file) {
 function renderGwBar() {
   const bar = $('#gwBar'); if (!bar) return;
   bar.innerHTML = '';
+  if (!S.gwsLoaded) { bar.append(el('b', null, 'جارٍ التحميل…')); return; }
   if (!S.gws.length) { bar.append(el('b', null, 'لم يحدد المشرف أول جولة بعد')); return; }
   if (!S.openGw) { bar.append(el('b', null, 'لا توجد جولة مفتوحة حاليًا'), el('span', null, 'بانتظار إعلان الجولة التالية')); return; }
   const left = S.openGw.deadline - Date.now();
@@ -1077,13 +1084,30 @@ function computeBase() {
   const tl = timeline(prev, (S.uid && S.allPicks[S.uid]) || {});
   S.base = tl.base; S.used = tl.used; S.ft = tl.ft;
 }
+// قراءة مباشرة لفريقي واختياراتي (احتياط إضافي، لا يعتمد على قراءة كل الفرق)
+async function loadMine() {
+  if (!S.uid || !S.gws.length) return;
+  const uid = S.uid;
+  try {
+    const [t, ...ps] = await Promise.all([getDoc(doc(S.db, 'teams', uid)),
+      ...S.gws.map((g) => getDoc(doc(S.db, 'gameweeks', String(g.n), 'picks', uid)))]);
+    if (uid !== S.uid) return;
+    if (t.exists()) S.teams.set(uid, t.data());
+    ps.forEach((sn, i) => { if (sn.exists()) { S.allPicks[uid] = S.allPicks[uid] || {}; S.allPicks[uid][S.gws[i].n] = sn.data(); } });
+  } catch (e) { toast('تعذر قراءة فريقك: ' + errText(e), true); }
+}
 async function refreshGame(force) {
   const old = S.openGw && S.openGw.n;
   S.openGw = S.gws.find((g) => g.deadline > Date.now()) || null;
-  try { await loadPicks(!!force); } catch (e) { toast('تعذر تحميل الفرق: ' + errText(e), true); }
+  try {
+    await loadPicks(!!force);
+    // تأكد أن اختيارات الجولة المفتوحة تم تحميلها فعلًا قبل بناء الفريق
+    if (S.openGw && !(S.picksFor || []).includes(S.openGw.n)) await loadPicks(true);
+  } catch (e) { toast('تعذر تحميل الفرق: ' + errText(e), true); }
+  await loadMine();
   computeBase();
   // تحميل فريقي في المنشئ مرة واحدة لكل (مستخدم + جولة). إذا لا توجد جولة مفتوحة نعرض آخر تشكيلة محفوظة
-  const key = S.uid && S.picksT ? S.uid + ':' + (S.openGw ? S.openGw.n : 'none') : null;
+  const key = S.uid && S.picksT && S.gwsLoaded ? S.uid + ':' + (S.openGw ? S.openGw.n : 'none') : null;
   if (key && S.loadedFor !== key) {
     S.loadedFor = key;
     const t = S.teams.get(S.uid); if (t) { $('#teamName').value = t.name || ''; S.hasTeam = true; }
@@ -1336,7 +1360,7 @@ playersReady = new Promise((r) => { playersLoaded = r; });
 
   onSnapshot(collection(S.db, 'gameweeks'),
     async (snap) => {
-      S.gws = snap.docs.map((d) => d.data()).sort((a, b) => a.n - b.n);
+      S.gws = snap.docs.map((d) => d.data()).sort((a, b) => a.n - b.n); S.gwsLoaded = true;
       await playersReady; S.picksT = 0;
       refreshGame(true);
     },
