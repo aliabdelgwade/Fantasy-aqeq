@@ -989,17 +989,17 @@ function computeBase() {
 async function refreshGame(force) {
   const old = S.openGw && S.openGw.n;
   S.openGw = S.gws.find((g) => g.deadline > Date.now()) || null;
-  try { await loadPicks(!!force); } catch { /* الاتصال */ }
+  try { await loadPicks(!!force); } catch (e) { toast('تعذر تحميل الفرق: ' + errText(e), true); }
   computeBase();
-  // تحميل فريقي في المنشئ مرة واحدة لكل (مستخدم + جولة)
-  const key = S.uid && S.openGw ? S.uid + ':' + S.openGw.n : null;
+  // تحميل فريقي في المنشئ مرة واحدة لكل (مستخدم + جولة). إذا لا توجد جولة مفتوحة نعرض آخر تشكيلة محفوظة
+  const key = S.uid && S.picksT ? S.uid + ':' + (S.openGw ? S.openGw.n : 'none') : null;
   if (key && S.loadedFor !== key) {
     S.loadedFor = key;
     const t = S.teams.get(S.uid); if (t) { $('#teamName').value = t.name || ''; S.hasTeam = true; }
-    const mine = (S.allPicks[S.uid] || {})[S.openGw.n];
+    const mine = S.openGw ? (S.allPicks[S.uid] || {})[S.openGw.n] : null;
     if (mine) { applyTeam(mine); S.chip = mine.chip || null; }
     else if (S.base) { applyTeam(S.base.pick); S.chip = null; }
-  } else if (!key && !S.uid) S.loadedFor = null;
+  } else if (!S.uid) S.loadedFor = null;
   if (old && !S.openGw) toast('انتهى الموعد النهائي للجولة 🔒');
   renderGwBar(); renderChips(); renderTeam(); renderList();
   if ($('#gwModal').classList.contains('open')) renderGwAdmin();
