@@ -40,6 +40,7 @@
   <nav class="tabs">
     <button class="tab active" data-tab="pick">اختيار الفريق</button>
     <button class="tab" data-tab="table">ترتيب الدوري</button>
+    <button class="tab" data-tab="clubs">الفرق</button>
     <button class="tab" data-tab="cup">🏆 البطولة</button>
     <button class="gw-btn" id="gwAdmin" type="button" hidden>⚙️ إدارة الجولات</button>
   </nav>
@@ -95,6 +96,12 @@
   </section>
 
   <!-- ====== البطولة ====== -->
+  <section id="tab-clubs" class="panel table-panel" hidden>
+    <h2>الفرق</h2>
+    <div id="clubsBody"></div>
+    <input type="file" id="clubFile" accept="image/*" hidden>
+  </section>
+
   <section id="tab-cup" class="panel table-panel" hidden>
     <h2>🏆 البطولة</h2>
     <div id="cupBody"></div>

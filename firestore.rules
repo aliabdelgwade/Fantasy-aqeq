@@ -83,6 +83,15 @@ service cloud.firestore {
       allow delete: if isAdmin() || (request.auth != null && request.auth.uid == uid);
     }
 
+    // شعارات الفرق: الكل يقرأ والمشرفة فقط تكتب
+    match /clubs/{id} {
+      allow read: if true;
+      allow delete: if isAdmin();
+      allow create, update: if isAdmin() && request.resource.data.keys().hasOnly(['name', 'logo', 'updatedAt'])
+                   && request.resource.data.name is string && request.resource.data.name.size() <= 60
+                   && request.resource.data.logo is string && request.resource.data.logo.size() < 300000;
+    }
+
     // البطولة (المجموعات والأدوار الإقصائية): الكل يقرأ والمشرفة فقط تكتب
     match /cup/{id} {
       allow read: if true;

@@ -30,7 +30,7 @@ const S = {
   formation: '2-1-1', slots: {}, bench: [], filter: 'all', query: '', target: null,
   uid: null, hasTeam: false, db: null, auth: null, profile: null, sel: null,
   gws: [], openGw: null, allPicks: {}, teams: new Map(), picksT: 0, base: null, used: { wc: 0, fh: 0, bb: 0, tc: 0 }, ft: 1,
-  captain: null, vice: null, chip: null, loadedFor: null, cup: { groups: [], ko: {} },
+  captain: null, vice: null, chip: null, loadedFor: null, cup: { groups: [], ko: {} }, clubs: new Map(),
 };
 
 // ---------- أدوات ----------
@@ -243,7 +243,9 @@ function renderList() {
     const av = avatar(p, 'av'); av.onclick = () => openProfile(p.id);
     const meta = el('div', 'meta'); meta.onclick = () => openProfile(p.id);
     const nm = el('div', 'nm', p.name); nm.appendChild(el('span', 'pos ' + p.position, POS[p.position].one));
-    meta.append(nm, el('div', 'cl', p.club));
+    const cl = el('div', 'cl'); const clg = S.clubs.get(p.club);
+    if (clg && clg.logo) { const li = new Image(); li.src = clg.logo; li.className = 'cl-logo'; cl.appendChild(li); }
+    cl.appendChild(document.createTextNode(p.club)); meta.append(nm, cl);
     if (isOff(S.openGw, p.club)) meta.appendChild(el('div', 'offtag', '⛔ فريقه لا يلعب هذه الجولة'));
     const price = el('div', 'num'); price.append(el('b', null, money(p.price)), document.createTextNode('السعر'));
     const pts = el('div', 'num'); pts.append(el('b', null, String(p.points)), document.createTextNode('نقاط'));
@@ -721,6 +723,15 @@ function openTeamModal(r) {
   const body = $('#teamBody'); body.innerHTML = '';
   $('#tmTitle').textContent = r.t.name;
   body.appendChild(el('div', 'tm-total', `المجموع: ${r.tt.total} نقطة`));
+  // التشكيلة: صاحب الفريق والمشرف يشوفون الأحدث، والبقية بعد انتهاء الموعد النهائي (حتى لا يُنسخ الفريق)
+  const canSee = S.admin || S.uid === r.uid;
+  const vis = canSee ? S.gws : S.gws.filter((g) => g.deadline <= Date.now());
+  const last = [...timeline(vis, S.allPicks[r.uid] || {}).rows].reverse().find((x) => !x.none);
+  if (last) {
+    const g = S.gws.find((x) => x.n === last.n);
+    body.appendChild(el('div', 'tm-h', `التشكيلة — ${gwLabel(g)}${last.chip ? ' · ' + CHIPS[last.chip] : ''}`));
+    body.appendChild(lineupEl(last.pick));
+  } else body.appendChild(el('div', 'empty-msg', canSee ? 'لم يحفظ تشكيلة بعد.' : 'تظهر التشكيلة بعد انتهاء الموعد النهائي للجولة.'));
   const ns = Object.keys(r.tt.perGw).map(Number).sort((a, b) => b - a);
   if (!ns.length) body.appendChild(el('div', 'empty-msg', 'لا توجد جولات منتهية الموعد بعد.'));
   ns.forEach((n) => {
@@ -740,7 +751,8 @@ function openTeamModal(r) {
 document.querySelectorAll('.tab').forEach((t) => t.onclick = () => {
   document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === t));
   const k = t.dataset.tab;
-  $('#tab-pick').hidden = k !== 'pick'; $('#tab-table').hidden = k !== 'table'; $('#tab-cup').hidden = k !== 'cup';
+  $('#tab-pick').hidden = k !== 'pick'; $('#tab-table').hidden = k !== 'table'; $('#tab-cup').hidden = k !== 'cup'; $('#tab-clubs').hidden = k !== 'clubs';
+  if (k === 'clubs') renderClubs();
   if (k === 'table') renderStandings();
   if (k === 'cup') renderCup();
 });
@@ -955,6 +967,85 @@ async function fantasyStages(box) {
   });
 }
 
+function lineupEl(pick) {
+  const box = el('div', 'lu');
+  const by = { gk: [], def: [], mid: [], fwd: [] };
+  pick.starters.forEach((id) => { const p = S.byId.get(id); if (p) by[p.position].push(p); });
+  const chipEl = (p, role) => {
+    const c = el('div', 'lu-p'); c.appendChild(avatar(p, 'lu-av'));
+    c.appendChild(el('div', 'lu-n', p.name));
+    if (pick.captain === p.id) c.appendChild(el('span', 'lu-b cap', 'C'));
+    else if (pick.vice === p.id) c.appendChild(el('span', 'lu-b', 'V'));
+    if (role) c.classList.add(role); return c;
+  };
+  ORDER.forEach((k) => { if (!by[k].length) return; const row = el('div', 'lu-row'); by[k].forEach((p) => row.appendChild(chipEl(p))); box.appendChild(row); });
+  const bn = el('div', 'lu-bench'); bn.appendChild(el('span', null, 'البديل:'));
+  pick.bench.forEach((id) => { const p = S.byId.get(id); if (p) bn.appendChild(chipEl(p, 'bn')); });
+  box.appendChild(bn);
+  return box;
+}
+
+// ---------- الفرق (مع الشعارات) ----------
+const clubId = (name) => 'c' + Array.from(new TextEncoder().encode(name)).map((b) => b.toString(16).padStart(2, '0')).join('');
+function allClubs() {
+  const m = new Map();
+  S.players.forEach((p) => { if (p.club) m.set(p.club, (m.get(p.club) || 0) + 1); });
+  (S.cup.groups || []).forEach((g) => (g.teams || []).forEach((t) => { if (!m.has(t)) m.set(t, 0); }));
+  return [...m.entries()].sort((x, y) => x[0].localeCompare(y[0], 'ar'));
+}
+let clubTarget = null;
+function renderClubs() {
+  const box = $('#clubsBody'); if (!box) return; box.innerHTML = '';
+  const list = allClubs();
+  if (!list.length) { box.appendChild(el('div', 'empty-msg', 'لا توجد فرق بعد. تظهر هنا الفرق المكتوبة في لاعبيك ومجموعات البطولة.')); return; }
+  const grid = el('div', 'club-grid');
+  list.forEach(([name, n]) => {
+    const c = S.clubs.get(name); const card = el('div', 'club-card');
+    const lg = el('div', 'club-logo');
+    if (c && c.logo) { const i = new Image(); i.src = c.logo; i.alt = name; lg.appendChild(i); } else lg.appendChild(el('span', null, name.trim().charAt(0)));
+    card.append(lg, el('b', null, name), el('span', 'club-n', n + ' لاعب'));
+    if (S.admin) {
+      const acts = el('div', 'club-acts');
+      const up = el('button', 'btn ghost sm', c && c.logo ? 'تغيير الشعار' : 'إضافة شعار'); up.type = 'button';
+      up.onclick = () => { clubTarget = name; $('#clubFile').click(); };
+      acts.appendChild(up);
+      if (c && c.logo) {
+        const d = el('button', 'btn ghost sm', 'حذف'); d.type = 'button';
+        d.onclick = async () => { try { await deleteDoc(doc(S.db, 'clubs', clubId(name))); toast('تم حذف الشعار'); } catch (e) { toast(errText(e), true); } };
+        acts.appendChild(d);
+      }
+      card.appendChild(acts);
+    }
+    grid.appendChild(card);
+  });
+  box.appendChild(grid);
+}
+$('#clubFile').onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f || !clubTarget) return;
+  if (!f.type.startsWith('image/')) { toast('الملف يجب أن يكون صورة', true); return; }
+  try {
+    const logo = await resizeLogo(f);
+    await setDoc(doc(S.db, 'clubs', clubId(clubTarget)), { name: clubTarget, logo, updatedAt: Date.now() });
+    toast('تم حفظ الشعار ✅');
+  } catch (er) { toast(er && er.code ? errText(er) : 'تعذّر قراءة الصورة، جرّبي صورة أخرى', true); }
+};
+function resizeLogo(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file); const img = new Image();
+    img.onload = () => {
+      const N = 256, k = Math.min(N / img.width, N / img.height);
+      const c = document.createElement('canvas'); c.width = N; c.height = N;
+      const w = img.width * k, h = img.height * k;
+      c.getContext('2d').drawImage(img, (N - w) / 2, (N - h) / 2, w, h);
+      URL.revokeObjectURL(url);
+      let d = c.toDataURL('image/png'); if (d.length > 280000) d = c.toDataURL('image/jpeg', 0.85);
+      res(d);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(); };
+    img.src = url;
+  });
+}
+
 // ---------- الجولات: الشريط والرقائق ----------
 function renderGwBar() {
   const bar = $('#gwBar'); if (!bar) return;
@@ -1012,6 +1103,7 @@ setInterval(() => {
 function setAdmin(on) {
   S.admin = on;
   if (!$('#tab-cup').hidden) renderCup();
+  if (!$('#tab-clubs').hidden) renderClubs();
   $('#adminChip').hidden = !on; $('#addPlayer').hidden = !on; $('#gwAdmin').hidden = !on;
   renderList();
   if (S.profile && $('#profileModal').classList.contains('open')) renderProfile();
@@ -1252,6 +1344,10 @@ playersReady = new Promise((r) => { playersLoaded = r; });
 
   onSnapshot(doc(S.db, 'cup', 'main'),
     (snap) => { S.cup = snap.exists() ? snap.data() : { groups: [], ko: {} }; if (!$('#tab-cup').hidden) renderCup(); },
+    () => {});
+
+  onSnapshot(collection(S.db, 'clubs'),
+    (snap) => { S.clubs = new Map(snap.docs.map((d) => [d.data().name, d.data()])); renderList(); if (!$('#tab-clubs').hidden) renderClubs(); },
     () => {});
 
   getRedirectResult(S.auth).catch((e) => toast(errText(e), true));
