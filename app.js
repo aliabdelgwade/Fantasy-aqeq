@@ -1096,6 +1096,21 @@ async function loadMine() {
     ps.forEach((sn, i) => { if (sn.exists()) { S.allPicks[uid] = S.allPicks[uid] || {}; S.allPicks[uid][S.gws[i].n] = sn.data(); } });
   } catch (e) { toast('تعذر قراءة فريقك: ' + errText(e), true); }
 }
+// شاشة انتظار حتى يكتمل تحميل بيانات المستخدم وفريقه (تمنع الحفظ قبل التحميل)
+let loadTimer = null;
+function updateLoading() {
+  const box = $('#loading'); if (!box) return;
+  const ready = !S.db || (S.playersOk && S.gwsLoaded && S.authKnown && (!S.uid || S.loadedFor !== null));
+  box.hidden = ready;
+  clearTimeout(loadTimer);
+  if (!ready) loadTimer = setTimeout(() => { box.hidden = true; toast('تأخر التحميل، تأكدي من الإنترنت ثم حدّثي الصفحة', true); }, 20000);
+}
+function renderDiag() {
+  const d = $('#diag'); if (!d) return;
+  if (!S.uid) { d.textContent = ''; return; }
+  const ns = Object.keys((S.allPicks[S.uid]) || {}).map(Number).sort((x, y) => x - y);
+  d.textContent = `الحساب: ${$('#meName').textContent || ''} · ` + (ns.length ? `فريقك المحفوظ موجود (الجولات: ${ns.join('، ')})` : 'لا يوجد فريق محفوظ لهذا الحساب');
+}
 async function refreshGame(force) {
   const old = S.openGw && S.openGw.n;
   S.openGw = S.gws.find((g) => g.deadline > Date.now()) || null;
@@ -1116,7 +1131,7 @@ async function refreshGame(force) {
     else if (S.base) { applyTeam(S.base.pick); S.chip = null; }
   } else if (!S.uid) S.loadedFor = null;
   if (old && !S.openGw) toast('انتهى الموعد النهائي للجولة 🔒');
-  renderGwBar(); renderChips(); renderTeam(); renderList();
+  renderGwBar(); renderChips(); renderTeam(); renderList(); renderDiag(); updateLoading();
   if ($('#gwModal').classList.contains('open')) renderGwAdmin();
 }
 setInterval(() => {
@@ -1355,12 +1370,12 @@ playersReady = new Promise((r) => { playersLoaded = r; });
   S.auth = getAuth(app); S.db = getFirestore(app);
 
   onSnapshot(query(collection(S.db, 'players'), orderBy('createdAt')),
-    (snap) => { applyPlayers(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); playersLoaded(); },
+    (snap) => { applyPlayers(snap.docs.map((d) => ({ id: d.id, ...d.data() }))); S.playersOk = true; playersLoaded(); updateLoading(); },
     (e) => { toast(errText(e), true); playersLoaded(); });
 
   onSnapshot(collection(S.db, 'gameweeks'),
     async (snap) => {
-      S.gws = snap.docs.map((d) => d.data()).sort((a, b) => a.n - b.n); S.gwsLoaded = true;
+      S.gws = snap.docs.map((d) => d.data()).sort((a, b) => a.n - b.n); S.gwsLoaded = true; updateLoading();
       await playersReady; S.picksT = 0;
       refreshGame(true);
     },
@@ -1377,8 +1392,8 @@ playersReady = new Promise((r) => { playersLoaded = r; });
   getRedirectResult(S.auth).catch((e) => toast(errText(e), true));
   let welcomed = false;
   onAuthStateChanged(S.auth, async (u) => {
-    S.uid = u ? u.uid : null; S.hasTeam = false; S.loadedFor = null;
-    setUser(u);
+    S.uid = u ? u.uid : null; S.hasTeam = false; S.loadedFor = null; S.authKnown = true;
+    updateLoading(); setUser(u);
     const admin = !!u && ADMIN_UID.split(',').map((x) => x.trim()).filter(Boolean).includes(u.uid);
     setAdmin(admin);
     if (u) {
