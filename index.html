@@ -290,6 +290,30 @@
   </form>
 </div>
 
+<!-- تفاصيل فريق (لاعبوه) -->
+<div class="overlay" id="clubModal" role="dialog" aria-modal="true">
+  <div class="modal wide">
+    <div class="m-head"><h3 id="clubTitle"></h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body" id="clubBody"></div>
+  </div>
+</div>
+
+<!-- تعديل فريق (للمشرف) -->
+<div class="overlay" id="clubEditModal" role="dialog" aria-modal="true">
+  <form class="modal" id="clubEditForm" novalidate>
+    <div class="m-head"><h3>تعديل الفريق</h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body">
+      <label for="ceName">اسم الفريق</label><input type="text" id="ceName" maxlength="40">
+      <label>الشعار</label>
+      <div class="club-logo" id="cePrev"></div>
+      <div class="actions"><button type="button" class="btn ghost sm" id="ceChoose">اختيار صورة</button><button type="button" class="btn ghost sm" id="ceRemove">حذف الشعار</button></div>
+      <p class="hint">تغيير الاسم يغيّره عند كل لاعبي الفريق وفي مجموعات البطولة.</p>
+      <div class="err" id="ceErr"></div>
+      <div class="actions"><button class="btn primary" type="submit">حفظ</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>
+    </div>
+  </form>
+</div>
+
 <div class="loading" id="loading"><div class="spin"></div><b>انتظر قليلًا، يتم تحميل بياناتك وفريقك…</b></div>
 
 <div class="toast" id="toast"></div>

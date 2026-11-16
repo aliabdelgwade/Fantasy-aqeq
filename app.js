@@ -999,42 +999,116 @@ function allClubs() {
   (S.cup.groups || []).forEach((g) => (g.teams || []).forEach((t) => { if (!m.has(t)) m.set(t, 0); }));
   return [...m.entries()].sort((x, y) => x[0].localeCompare(y[0], 'ar'));
 }
-let clubTarget = null;
+let clubEdit = null; // {name, logo: undefined|null|dataurl}
+const clubStat = (p) => ({
+  played: (p.matches || []).filter((m) => num(m.min) > 0).length,
+  g: sumM(p, (m) => num(m.g)), a: sumM(p, (m) => num(m.a)),
+  cs: (p.position === 'gk' || p.position === 'def') ? sumM(p, (m) => (num(m.min) > 0 && num(m.ga) === 0 ? 1 : 0)) : 0,
+  yc: sumM(p, (m) => num(m.yc)), rc: sumM(p, (m) => num(m.rc)),
+});
 function renderClubs() {
   const box = $('#clubsBody'); if (!box) return; box.innerHTML = '';
   const list = allClubs();
   if (!list.length) { box.appendChild(el('div', 'empty-msg', 'لا توجد فرق بعد. تظهر هنا الفرق المكتوبة في لاعبيك ومجموعات البطولة.')); return; }
   const grid = el('div', 'club-grid');
   list.forEach(([name, n]) => {
-    const c = S.clubs.get(name); const card = el('div', 'club-card');
+    const c = S.clubs.get(name); const card = el('div', 'club-card clickable');
     const lg = el('div', 'club-logo');
     if (c && c.logo) { const i = new Image(); i.src = c.logo; i.alt = name; lg.appendChild(i); } else lg.appendChild(el('span', null, name.trim().charAt(0)));
     card.append(lg, el('b', null, name), el('span', 'club-n', n + ' لاعب'));
+    card.onclick = () => openClub(name);
     if (S.admin) {
-      const acts = el('div', 'club-acts');
-      const up = el('button', 'btn ghost sm', c && c.logo ? 'تغيير الشعار' : 'إضافة شعار'); up.type = 'button';
-      up.onclick = () => { clubTarget = name; $('#clubFile').click(); };
-      acts.appendChild(up);
-      if (c && c.logo) {
-        const d = el('button', 'btn ghost sm', 'حذف'); d.type = 'button';
-        d.onclick = async () => { try { await deleteDoc(doc(S.db, 'clubs', clubId(name))); toast('تم حذف الشعار'); } catch (e) { toast(errText(e), true); } };
-        acts.appendChild(d);
-      }
-      card.appendChild(acts);
+      const tools = el('div', 'club-tools');
+      const ed = el('button', 'ico', '✏️'); ed.type = 'button'; ed.title = 'تعديل الفريق';
+      ed.onclick = (ev) => { ev.stopPropagation(); openClubEdit(name); };
+      const dl = el('button', 'ico del', '🗑️'); dl.type = 'button'; dl.title = 'حذف الفريق';
+      dl.onclick = (ev) => { ev.stopPropagation(); deleteClub(name, n); };
+      tools.append(ed, dl); card.appendChild(tools);
     }
     grid.appendChild(card);
   });
   box.appendChild(grid);
 }
+
+// تفاصيل الفريق: لاعبوه وإحصائياتهم
+function openClub(name) {
+  const c = S.clubs.get(name);
+  const ps = S.players.filter((p) => p.club === name).sort((x, y) => ORDER.indexOf(x.position) - ORDER.indexOf(y.position) || y.points - x.points);
+  $('#clubTitle').textContent = name;
+  const body = $('#clubBody'); body.innerHTML = '';
+  const top = el('div', 'club-head');
+  const lg = el('div', 'club-logo sm'); if (c && c.logo) { const i = new Image(); i.src = c.logo; lg.appendChild(i); } else lg.appendChild(el('span', null, name.trim().charAt(0)));
+  const tot = ps.reduce((t, p) => { const s = clubStat(p); t.pts += p.points; t.g += s.g; t.a += s.a; t.cs += s.cs; return t; }, { pts: 0, g: 0, a: 0, cs: 0 });
+  const sum = el('div', 'club-sum'); sum.innerHTML = `<span>اللاعبون <b>${ps.length}</b></span><span>النقاط <b>${tot.pts}</b></span><span>الأهداف <b>${tot.g}</b></span><span>الحاسمة <b>${tot.a}</b></span><span>نظيفة <b>${tot.cs}</b></span>`;
+  top.append(lg, sum); body.appendChild(top);
+  if (!ps.length) { body.appendChild(el('div', 'empty-msg', 'لا يوجد لاعبون في هذا الفريق بعد.')); openModal('#clubModal'); return; }
+  const t = el('table', 'club-t'); const h = el('tr');
+  ['اللاعب', 'لعب', 'أهداف', 'حاسمة', 'نظيفة', '🟨', '🟥', 'نقاط'].forEach((x) => h.appendChild(el('th', null, x))); t.appendChild(h);
+  ps.forEach((p) => {
+    const s = clubStat(p); const tr = el('tr', 'clickable');
+    const nm = el('td', 'tn'); nm.append(el('span', 'pos ' + p.position, POS[p.position].one), document.createTextNode(' ' + p.name));
+    tr.append(nm, ...[s.played, s.g, s.a, s.cs, s.yc, s.rc].map((v) => el('td', null, String(v))), el('td', 'pts', String(p.points)));
+    tr.onclick = () => { closeModal('#clubModal'); openProfile(p.id); };
+    t.appendChild(tr);
+  });
+  const wrap = el('div', 'club-tw'); wrap.appendChild(t); body.appendChild(wrap);
+  openModal('#clubModal');
+}
+
+// تعديل الفريق (الاسم + الشعار)
+function setCePrev() {
+  const pr = $('#cePrev'); pr.innerHTML = '';
+  const cur = clubEdit.logo !== undefined ? clubEdit.logo : (S.clubs.get(clubEdit.name) || {}).logo;
+  if (cur) { const i = new Image(); i.src = cur; pr.appendChild(i); } else pr.appendChild(el('span', null, ($('#ceName').value || clubEdit.name).trim().charAt(0)));
+}
+function openClubEdit(name) {
+  if (!S.admin) return;
+  clubEdit = { name, logo: undefined };
+  $('#ceName').value = name; $('#ceErr').textContent = ''; setCePrev(); openModal('#clubEditModal');
+}
+$('#ceChoose').onclick = () => $('#clubFile').click();
+$('#ceRemove').onclick = () => { clubEdit.logo = null; setCePrev(); };
 $('#clubFile').onchange = async (e) => {
-  const f = e.target.files[0]; e.target.value = ''; if (!f || !clubTarget) return;
-  if (!f.type.startsWith('image/')) { toast('الملف يجب أن يكون صورة', true); return; }
-  try {
-    const logo = await resizeLogo(f);
-    await setDoc(doc(S.db, 'clubs', clubId(clubTarget)), { name: clubTarget, logo, updatedAt: Date.now() });
-    toast('تم حفظ الشعار ✅');
-  } catch (er) { toast(er && er.code ? errText(er) : 'تعذّر قراءة الصورة، جرّبي صورة أخرى', true); }
+  const f = e.target.files[0]; e.target.value = ''; if (!f || !clubEdit) return;
+  if (!f.type.startsWith('image/')) { $('#ceErr').textContent = 'الملف يجب أن يكون صورة'; return; }
+  try { clubEdit.logo = await resizeLogo(f); $('#ceErr').textContent = ''; setCePrev(); }
+  catch { $('#ceErr').textContent = 'تعذّر قراءة الصورة، جرّبي صورة أخرى'; }
 };
+$('#clubEditForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const old = clubEdit.name, nn = $('#ceName').value.trim();
+  if (!nn || nn.length > 40) { $('#ceErr').textContent = 'اسم الفريق من 1 إلى 40 حرفًا'; return; }
+  if (nn !== old && allClubs().some(([x]) => x === nn)) { $('#ceErr').textContent = 'يوجد فريق بهذا الاسم'; return; }
+  const btn = $('#clubEditForm button[type=submit]'); btn.disabled = true;
+  try {
+    const logo = clubEdit.logo !== undefined ? clubEdit.logo : ((S.clubs.get(old) || {}).logo || null);
+    if (nn !== old) {
+      for (const p of S.players.filter((x) => x.club === old)) await patchPlayer(p.id, { club: nn });
+      const cup = JSON.parse(JSON.stringify(S.cup)); let ch = false;
+      const rn = (x) => { if (x === old) { ch = true; return nn; } return x; };
+      (cup.groups || []).forEach((g) => { g.teams = (g.teams || []).map(rn); (g.res || []).forEach((r) => { r.a = rn(r.a); r.b = rn(r.b); }); });
+      Object.values(cup.ko || {}).forEach((arr) => (arr || []).forEach((m) => { if (m) { m.a = rn(m.a); m.b = rn(m.b); } }));
+      if (ch) await saveCup(cup);
+      if (S.clubs.has(old)) await deleteDoc(doc(S.db, 'clubs', clubId(old)));
+    }
+    if (logo) await setDoc(doc(S.db, 'clubs', clubId(nn)), { name: nn, logo, updatedAt: Date.now() });
+    else if (S.clubs.has(nn)) await deleteDoc(doc(S.db, 'clubs', clubId(nn)));
+    closeModal('#clubEditModal'); toast('تم حفظ الفريق ✅');
+  } catch (er) { $('#ceErr').textContent = errText(er); }
+  finally { btn.disabled = false; }
+};
+
+// حذف فريق (بتأكيد من خطوتين): يحذف لاعبيه وشعاره
+let delArm = null;
+async function deleteClub(name, n) {
+  if (delArm !== name) { delArm = name; toast(`اضغطي 🗑️ مرة ثانية لحذف "${name}" مع ${n} لاعب`, true); setTimeout(() => { if (delArm === name) delArm = null; }, 5000); return; }
+  delArm = null;
+  try {
+    for (const p of S.players.filter((x) => x.club === name)) await deleteDoc(doc(S.db, 'players', p.id));
+    if (S.clubs.has(name)) await deleteDoc(doc(S.db, 'clubs', clubId(name)));
+    toast('تم حذف الفريق');
+  } catch (er) { toast(errText(er), true); }
+}
 function resizeLogo(file) {
   return new Promise((res, rej) => {
     const url = URL.createObjectURL(file); const img = new Image();
