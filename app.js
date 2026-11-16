@@ -1046,7 +1046,7 @@ function openClub(name) {
   ['اللاعب', 'لعب', 'أهداف', 'حاسمة', 'نظيفة', '🟨', '🟥', 'نقاط'].forEach((x) => h.appendChild(el('th', null, x))); t.appendChild(h);
   ps.forEach((p) => {
     const s = clubStat(p); const tr = el('tr', 'clickable');
-    const nm = el('td', 'tn'); nm.append(el('span', 'pos ' + p.position, POS[p.position].one), document.createTextNode(' ' + p.name));
+    const nm = el('td', 'tn'); const wr = el('div', 'club-pl'); wr.append(avatar(p, 'club-av'), el('span', 'pos ' + p.position, POS[p.position].one), el('span', null, p.name)); nm.appendChild(wr);
     tr.append(nm, ...[s.played, s.g, s.a, s.cs, s.yc, s.rc].map((v) => el('td', null, String(v))), el('td', 'pts', String(p.points)));
     tr.onclick = () => { closeModal('#clubModal'); openProfile(p.id); };
     t.appendChild(tr);
