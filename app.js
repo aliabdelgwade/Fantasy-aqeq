@@ -814,8 +814,7 @@ function renderBracket(wrap) {
   const champ = el('div', 'champ'); champ.append(el('div', 'trophy', '🏆'), el('div', 'champ-t', 'بطل البطولة'), el('div', 'champ-n', R.champion || '؟'));
   mid.appendChild(champ);
   mid.appendChild(el('div', 'bcol-t', KO_NAMES.final)); mid.appendChild(bracketMatch('final', 0, R.final[0]));
-  mid.appendChild(el('div', 'bcol-t third', KO_NAMES.third)); mid.appendChild(bracketMatch('third', 0, R.third[0]));
-  wrap.append(col('r16', 0, 4, 'l'), col('qf', 0, 2, 'l'), col('sf', 0, 1, 'l'), mid, col('sf', 1, 2, 'r'), col('qf', 2, 4, 'r'), col('r16', 4, 8, 'r'));
+  wrap.append(col('qf', 0, 2, 'l'), col('sf', 0, 1, 'l'), mid, col('sf', 1, 2, 'r'), col('qf', 2, 4, 'r'));
 }
 
 function renderCup() {
@@ -829,7 +828,7 @@ function renderCup() {
 
   const bh = el('div', 'cup-sec-h'); bh.appendChild(el('h3', null, 'الأدوار الإقصائية'));
   box.appendChild(bh);
-  if (S.admin) box.appendChild(el('p', 'hint', 'اضغط على أي مباراة لإدخال الفرق (دور الـ16 فقط) والنتيجة. الفائز ينتقل للدور التالي تلقائيًا.'));
+  if (S.admin) box.appendChild(el('p', 'hint', 'اضغط على أي مباراة لإدخال الفرق (ربع النهائي فقط) والنتيجة. الفائز ينتقل للدور التالي تلقائيًا.'));
   const scroll = el('div', 'bracket-scroll'); const br = el('div', 'bracket'); renderBracket(br); scroll.appendChild(br); box.appendChild(scroll);
 
   const sh = el('div', 'cup-sec-h'); sh.appendChild(el('h3', null, 'إحصائيات اللاعبين')); box.appendChild(sh);
@@ -924,7 +923,7 @@ function openKoForm(st, i) {
   if (!S.admin) return;
   editK = { st, i }; const m = resolveKo(S.cup.ko)[st][i];
   $('#koTitle').textContent = `${KO_NAMES[st]}${KO[st] > 1 ? ' — مباراة ' + (i + 1) : ''}`;
-  const r16 = st === 'r16';
+  const r16 = st === 'qf';
   $('#koA').value = m.a || ''; $('#koB').value = m.b || ''; $('#koA').disabled = !r16; $('#koB').disabled = !r16;
   const two = TWO_LEG.has(st);
   $('#koLegs').hidden = !two; $('#koLegs2').hidden = !two; $('#koLbl1').textContent = $('#koLbl2').textContent = two ? 'الذهاب' : 'النتيجة';
@@ -938,7 +937,7 @@ $('#koForm').onsubmit = async (e) => {
   const ko = JSON.parse(JSON.stringify(S.cup.ko || {}));
   ko[st] = ko[st] || []; for (let k = 0; k < KO[st]; k++) ko[st][k] = ko[st][k] || null;
   const m = { sa: numOrNull($('#koSa').value), sb: numOrNull($('#koSb').value), sa2: TWO_LEG.has(st) ? numOrNull($('#koSa2').value) : null, sb2: TWO_LEG.has(st) ? numOrNull($('#koSb2').value) : null, pa: numOrNull($('#koPa').value), pb: numOrNull($('#koPb').value) };
-  if (st === 'r16') { m.a = $('#koA').value.trim() || null; m.b = $('#koB').value.trim() || null; }
+  if (st === 'qf') { m.a = $('#koA').value.trim() || null; m.b = $('#koB').value.trim() || null; }
   ko[st][i] = m;
   try { await saveCup({ ...S.cup, ko }); closeModal('#koModal'); toast('تم الحفظ'); }
   catch (er) { $('#koErr').textContent = errText(er); }

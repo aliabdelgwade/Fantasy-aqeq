@@ -322,7 +322,7 @@ tr.clickable{cursor:pointer}
 /* ===== البطولة: مجموعات + شجرة الأدوار ===== */
 .cup-sec-h{display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px}
 .cup-sec-h h3{margin:0;font-size:17px;border-inline-start:4px solid var(--yellow);padding-inline-start:8px}
-.grp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.grp-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .grp{background:linear-gradient(180deg,#14213d,#0f1a30);border:1px solid #2b4a8a;border-radius:12px;padding:8px}
 .grp-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;color:var(--yellow)}
 .grp-t{width:100%;border-collapse:collapse;font-size:12.5px}
@@ -336,7 +336,7 @@ tr.clickable{cursor:pointer}
 .res-row .rn{flex:1;text-align:center;font-weight:700}
 .res-row input{width:54px;text-align:center}
 .bracket-scroll{overflow-x:auto;padding-bottom:8px;-webkit-overflow-scrolling:touch}
-.bracket{direction:ltr;display:grid;grid-template-columns:repeat(7,minmax(150px,1fr));gap:10px;min-width:1100px;padding:6px 2px;align-items:stretch}
+.bracket{direction:ltr;display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:10px;min-width:820px;padding:6px 2px;align-items:stretch}
 .bcol{display:flex;flex-direction:column}
 .bcol-t{text-align:center;font-size:12px;color:var(--yellow);font-weight:800;margin-bottom:6px;direction:rtl}
 .bcol-t.third{margin-top:18px}
@@ -426,3 +426,6 @@ tr.clickable{cursor:pointer}
 .club-pl{display:flex;align-items:center;gap:8px}
 .club-av{width:34px;height:34px;border-radius:50%;overflow:hidden;background:#dfe7f5;display:grid;place-items:center;flex:none}
 .club-av img{width:100%;height:100%;object-fit:cover}.club-av .ini{color:#1d2f5d;font-weight:900}
+
+@media(max-width:1000px){.grp-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.grp-grid{grid-template-columns:1fr}}

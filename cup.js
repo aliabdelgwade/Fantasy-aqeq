@@ -1,6 +1,6 @@
 // ================= Aqeq League — منطق البطولة (مجموعات + أدوار إقصائية) =================
-export const KO = { r16: 8, qf: 4, sf: 2, final: 1, third: 1 };
-export const KO_NAMES = { r16: 'دور الـ16', qf: 'ربع النهائي', sf: 'نصف النهائي', final: 'النهائي', third: 'المركز الثالث' };
+export const KO = { qf: 4, sf: 2, final: 1 };
+export const KO_NAMES = { qf: 'ربع النهائي', sf: 'نصف النهائي', final: 'النهائي' };
 const isN = (v) => Number.isFinite(v);
 export const TWO_LEG = new Set(['qf', 'sf']);
 // مجموع المباراتين (ذهاب + إياب) لمراحل الذهاب والإياب
@@ -35,14 +35,13 @@ export function winner(m, two = false) {
 }
 export function loser(m, two = false) { const w = winner(m, two); return w ? (w === m.a ? m.b : m.a) : null; }
 
-// الأدوار اللاحقة تُشتق تلقائيًا من الفائزين؛ يدخل المشرف فرق دور الـ16 فقط
+// الأدوار اللاحقة تُشتق تلقائيًا من الفائزين؛ يدخل المشرف فرق ربع النهائي فقط
 export function resolveKo(ko) {
   const get = (st, i) => ({ a: null, b: null, sa: null, sb: null, sa2: null, sb2: null, pa: null, pb: null, ...((ko && ko[st] && ko[st][i]) || {}) });
   const out = {};
-  out.r16 = [...Array(KO.r16)].map((_, i) => get('r16', i));
+  out.qf = [...Array(KO.qf)].map((_, i) => get('qf', i));
   const next = (st, prev, pst) => [...Array(KO[st])].map((_, i) => ({ ...get(st, i), a: winner(prev[2 * i], TWO_LEG.has(pst)), b: winner(prev[2 * i + 1], TWO_LEG.has(pst)) }));
-  out.qf = next('qf', out.r16, 'r16'); out.sf = next('sf', out.qf, 'qf'); out.final = next('final', out.sf, 'sf');
-  out.third = [{ ...get('third', 0), a: loser(out.sf[0], true), b: loser(out.sf[1], true) }];
+  out.sf = next('sf', out.qf, 'qf'); out.final = next('final', out.sf, 'sf');
   out.champion = winner(out.final[0]);
   return out;
 }
