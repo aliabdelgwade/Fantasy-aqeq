@@ -10,8 +10,8 @@ import {
 
 import {
   SC, num, breakdown, sumObj, matchPts, totalPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
-} from './game.js';
-import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js';
+} from './game.js?v=20261121c';
+import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261121c';
 
 const POS = {
   gk: { one: 'حارس', many: 'حراس', slot: 'حارس' },
@@ -1660,6 +1660,7 @@ function openMatchEditor(id) {
   const ns = S.gws.length ? S.gws.map((g) => g.n) : [MX.round]; if (!ns.includes(MX.round)) ns.push(MX.round);
   ns.sort((x, y) => x - y).forEach((n) => { const o = document.createElement('option'); o.value = n; o.textContent = gwName(n); sel.appendChild(o); });
   sel.value = MX.round; sel.onchange = () => { MX.round = Number(sel.value); };
+  $('#mxFin').checked = isDone(m) || Date.now() > m.at + 3600e3;
   $('#mxErr').textContent = ''; $('#mxSave').disabled = false; mxTab = 'lineup';
   mxRender(); openModal('#mxModal');
 }
@@ -1763,34 +1764,34 @@ function mxStats(body) {
 }
 $('#mxForm').onsubmit = async (e) => {
   e.preventDefault(); if (!MX) return;
-  const d = deriveMatch(MX); const round = MX.round;
+  const d = deriveMatch(MX); const round = MX.round; const fin = $('#mxFin').checked;
   $('#mxSave').disabled = true;
   try {
     const clubs = [MX.a, MX.b];
     for (const p of S.players.filter((x) => clubs.includes(x.club) || (x.matches || []).some((y) => y.fx === MX.id))) {
       const x = d.pl[p.id];
       const ms = (p.matches || []).filter((y) => y.fx !== MX.id && !(y.round === round && clubs.includes(p.club)));
-      if (x && x.played) ms.push(playerEntry(MX, p.id, x, d.sa, d.sb, round));
+      if (fin && x && x.played) ms.push(playerEntry(MX, p.id, x, d.sa, d.sb, round));
       ms.sort((y, z) => y.round - z.round);
       if (JSON.stringify(ms) === JSON.stringify([...(p.matches || [])].sort((y, z) => y.round - z.round))) continue;
       await patchPlayer(p.id, { matches: ms, fixtures: (p.fixtures || []).filter((f) => f.round !== round), points: totalPts({ position: p.position, matches: ms }) });
     }
     const clean = (o) => JSON.parse(JSON.stringify(o));
     const ev = MX.events.map(({ _sa, _sb, ...r }) => r);
-    const out = clean({ a: MX.a, b: MX.b, at: MX.at, sa: d.sa, sb: d.sb, round, lineup: MX.lineup, events: ev, stats: MX.stats, ratings: MX.ratings, bonus: MX.bonus, updatedAt: Date.now() });
+    const out = clean({ a: MX.a, b: MX.b, at: MX.at, sa: fin ? d.sa : null, sb: fin ? d.sb : null, round, lineup: MX.lineup, events: ev, stats: MX.stats, ratings: MX.ratings, bonus: MX.bonus, updatedAt: Date.now() });
     await setDoc(doc(S.db, 'matches', MX.id), out);
-    closeModal('#mxModal'); toast('تم حفظ المباراة ونقاط اللاعبين ✅');
+    closeModal('#mxModal'); toast(fin ? 'تم حفظ المباراة ونقاط اللاعبين ✅' : 'تم حفظ التشكيلة، تظهر للجميع الآن ✅');
   } catch (er) { $('#mxSave').disabled = false; $('#mxErr').textContent = errText(er); }
 };
 $('#mxClear').onclick = () => { if (!MX) return; const b = $('#mxClear'); if (b.textContent !== 'تأكيد؟') { b.textContent = 'تأكيد؟'; return; } b.textContent = 'إلغاء النتيجة'; MX.events = []; MX.lineup = { a: { st: [], bn: [] }, b: { st: [], bn: [] } }; mxRender(); };
 
 // ===== صفحة المباراة (للجميع) =====
 let mvId = null, mvTab = 'events';
-function openMatchView(id) { mvId = id; mvTab = 'events'; renderMatchView(); openModal('#mvModal'); }
+function openMatchView(id) { mvId = id; const m0 = (S.matches || []).find((x) => x.id === id); mvTab = m0 && isDone(m0) ? 'events' : 'lineup'; renderMatchView(); openModal('#mvModal'); }
 const rtClass = (r) => (r >= 7 ? 'g' : r >= 5 ? 'y' : 'r');
 function renderMatchView() {
   const m = (S.matches || []).find((x) => x.id === mvId); if (!m) { closeModal('#mvModal'); return; }
-  const d = deriveMatch(m); const played = (m.events || []).length || (m.lineup && ((m.lineup.a || {}).st || []).length) || isDone(m);
+  const d = deriveMatch(m); const hasLu = ['a', 'b'].some((s) => (((m.lineup || {})[s] || {}).st || []).length); const played = (m.events || []).length || hasLu || isDone(m);
   const body = $('#mvBody'); body.innerHTML = '';
   $('#mvTitle').textContent = `${m.a} × ${m.b}`;
   // الرأس
@@ -1812,7 +1813,7 @@ function renderMatchView() {
   hd.appendChild(scr);
   if (S.admin) { const ed = el('div', 'mv-adm'); const b1 = el('button', 'btn primary sm', '📝 إدارة المباراة (التشكيلة والأحداث)'); b1.type = 'button'; b1.onclick = () => { closeModal('#mvModal'); openMatchEditor(m.id); }; const b2 = el('button', 'btn ghost sm', 'تعديل الفريقين والوقت'); b2.type = 'button'; b2.onclick = () => { closeModal('#mvModal'); openGameForm(m.id); }; ed.append(b1, b2); hd.appendChild(ed); }
   body.appendChild(hd);
-  if (!played) { body.appendChild(el('div', 'empty-msg', 'تظهر التفاصيل بعد المباراة.')); return; }
+  if (!played) { body.appendChild(el('div', 'empty-msg', 'تظهر التشكيلة والتفاصيل قريبًا.')); return; }
   const tabs = el('div', 'pf-tabs mv-tabs');
   [['events', 'الأحداث'], ['lineup', 'التشكيلة'], ['stats', 'الإحصائيات']].forEach(([k, l]) => { const b = el('button', 'pf-tab' + (mvTab === k ? ' active' : ''), l); b.type = 'button'; b.onclick = () => { mvTab = k; renderMatchView(); }; tabs.appendChild(b); });
   body.appendChild(tabs);

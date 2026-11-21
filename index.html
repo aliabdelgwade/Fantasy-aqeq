@@ -7,7 +7,7 @@
 <link rel="icon" href="favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=20261121c">
 </head>
 <body>
 <header class="topbar">
@@ -320,6 +320,7 @@
     <div class="m-head"><h3 id="mxTitle"></h3><button type="button" class="x" data-close>✕</button></div>
     <div class="m-body">
       <div class="mx-top"><div><label for="mxRound">جولة الفانتازي</label><select id="mxRound"></select></div><div class="mx-score" id="mxScore"></div></div>
+      <label class="mx-fin"><input type="checkbox" id="mxFin"> المباراة انتهت (تُحسب النتيجة ونقاط اللاعبين). اتركيها فاضية إذا تبين تنشرين التشكيلة قبل المباراة.</label>
       <div class="pf-tabs" id="mxTabs"><button type="button" class="pf-tab active" data-t="lineup">التشكيلة</button><button type="button" class="pf-tab" data-t="events">الأحداث</button><button type="button" class="pf-tab" data-t="stats">الإحصائيات</button></div>
       <div id="mxBody"></div>
       <div class="err" id="mxErr"></div>
@@ -363,6 +364,6 @@
 <div class="loading" id="loading"><div class="spin"></div><b>انتظر قليلًا، يتم تحميل بياناتك وفريقك…</b></div>
 
 <div class="toast" id="toast"></div>
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js?v=20261121c"></script>
 </body>
 </html>
