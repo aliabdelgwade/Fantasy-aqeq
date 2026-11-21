@@ -307,36 +307,32 @@
         <div><label for="gB">الفريق الخصم</label><input type="text" id="gB" maxlength="40" list="gTeams"></div>
       </div>
       <label for="gAt">الوقت</label><input type="datetime-local" id="gAt">
-      <button class="btn add" type="button" id="gRes" hidden>📝 إدخال النتيجة وإحصائيات اللاعبين</button>
+      <button class="btn add" type="button" id="gRes" hidden>📝 إدارة المباراة (التشكيلة والأحداث والإحصائيات)</button>
       <div class="err" id="gErr"></div>
       <div class="actions"><button class="btn primary" type="submit">حفظ</button><button class="btn ghost" type="button" id="gDel" hidden>حذف المباراة</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>
     </div>
   </form>
 </div>
 
-<!-- نتيجة المباراة: بطاقة لكل لاعب -->
-<div class="overlay" id="resModal" role="dialog" aria-modal="true">
-  <form class="modal wide" id="resForm" novalidate>
-    <div class="m-head"><h3 id="resTitle"></h3><button type="button" class="x" data-close>✕</button></div>
+<!-- إدارة المباراة (للمشرف) -->
+<div class="overlay" id="mxModal" role="dialog" aria-modal="true">
+  <form class="modal wide" id="mxForm" novalidate>
+    <div class="m-head"><h3 id="mxTitle"></h3><button type="button" class="x" data-close>✕</button></div>
     <div class="m-body">
-      <div class="rs-top">
-        <div><label for="rRound">جولة الفانتازي</label><select id="rRound"></select></div>
-        <div><label for="rSa" id="rLa"></label><input type="number" id="rSa" min="0" max="99" inputmode="numeric"></div>
-        <div><label for="rSb" id="rLb"></label><input type="number" id="rSb" min="0" max="99" inputmode="numeric"></div>
-      </div>
-      <p class="hint">النتيجة تُحسب تلقائيًا من أهداف اللاعبين. <button type="button" class="linkbtn" id="rAuto">إعادة الحساب</button> · علّمي «لعب» لكل لاعب شارك (نقطتين)، والشباك النظيفة تُحسب تلقائيًا.</p>
-      <div id="resBody"></div>
-      <div class="err" id="rErr"></div>
-      <div class="actions sticky"><button class="btn primary" type="submit" id="rSave">حفظ النتيجة</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>
+      <div class="mx-top"><div><label for="mxRound">جولة الفانتازي</label><select id="mxRound"></select></div><div class="mx-score" id="mxScore"></div></div>
+      <div class="pf-tabs" id="mxTabs"><button type="button" class="pf-tab active" data-t="lineup">التشكيلة</button><button type="button" class="pf-tab" data-t="events">الأحداث</button><button type="button" class="pf-tab" data-t="stats">الإحصائيات</button></div>
+      <div id="mxBody"></div>
+      <div class="err" id="mxErr"></div>
+      <div class="actions sticky"><button class="btn primary" type="submit" id="mxSave">حفظ المباراة</button><button class="btn ghost" type="button" id="mxClear">إلغاء النتيجة</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>
     </div>
   </form>
 </div>
 
-<!-- عرض نتيجة مباراة -->
-<div class="overlay" id="gameView" role="dialog" aria-modal="true">
+<!-- صفحة المباراة -->
+<div class="overlay" id="mvModal" role="dialog" aria-modal="true">
   <div class="modal wide">
-    <div class="m-head"><h3 id="gvTitle"></h3><button type="button" class="x" data-close>✕</button></div>
-    <div class="m-body" id="gvBody"></div>
+    <div class="m-head"><h3 id="mvTitle"></h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body" id="mvBody"></div>
   </div>
 </div>
 

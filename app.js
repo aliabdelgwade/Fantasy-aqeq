@@ -1472,7 +1472,7 @@ playersReady = new Promise((r) => { playersLoaded = r; });
     () => {});
 
   onSnapshot(collection(S.db, 'matches'),
-    (snap) => { S.matches = snap.docs.map((d) => ({ id: d.id, ...d.data() })); if (!$('#tab-matches').hidden) renderMatches(); },
+    (snap) => { S.matches = snap.docs.map((d) => ({ id: d.id, ...d.data() })); if (!$('#tab-matches').hidden) renderMatches(); if ($('#mvModal').classList.contains('open')) renderMatchView(); },
     () => {});
 
   getRedirectResult(S.auth).catch((e) => toast(errText(e), true));
@@ -1498,6 +1498,13 @@ const fmtDay = (t) => new Date(t).toLocaleDateString('ar-u-nu-latn', { weekday: 
 const fmtTime = (t) => new Date(t).toLocaleTimeString('ar-u-nu-latn', { hour: 'numeric', minute: '2-digit' });
 const isDone = (m) => Number.isFinite(m.sa) && Number.isFinite(m.sb);
 const sameDay = (x, y) => new Date(x).toDateString() === new Date(y).toDateString();
+// اليوم / غدًا / أمس بدل التاريخ
+function relDay(t) {
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const d1 = new Date(t); d1.setHours(0, 0, 0, 0);
+  const diff = Math.round((d1 - d0) / 864e5);
+  return diff === 0 ? 'اليوم' : diff === 1 ? 'غدًا' : diff === -1 ? 'أمس' : fmtDay(t);
+}
 // جولة الفانتازي للمباراة: آخر جولة بدأ موعدها قبل وقت المباراة
 function gwOfTime(at) {
   const gs = [...S.gws].sort((x, y) => x.n - y.n);
@@ -1513,15 +1520,15 @@ function matchTeam(name, score) {
   if (score != null) r.appendChild(el('b', 'mt-sc', String(score)));
   return r;
 }
-function onMatchClick(m) { if (S.admin) openGameForm(m.id); else if (isDone(m)) openGameView(m.id); }
+function onMatchClick(m) { openMatchView(m.id); }
 function matchFeatured(m) {
   const c = el('div', 'mt-feat clickable');
   c.appendChild(el('div', 'mt-note', gwName(m.round || gwOfTime(m.at))));
   const row = el('div', 'mt-frow');
   const side = (n) => { const s = el('div', 'mt-fside'); s.append(tlogo(n, 'xl', true), el('div', 'mt-fname', n)); return s; };
   const mid = el('div', 'mt-fmid');
-  if (isDone(m)) mid.append(el('div', 'mt-fscore', `${m.sa} - ${m.sb}`), el('div', 'mt-fsub', 'انتهت'), el('div', 'mt-fsub', fmtDay(m.at)));
-  else mid.append(el('div', 'mt-fday', sameDay(m.at, Date.now()) ? 'اليوم' : fmtDay(m.at)), el('div', 'mt-ftime', fmtTime(m.at)));
+  if (isDone(m)) mid.append(el('div', 'mt-fscore', `${m.sa} - ${m.sb}`), el('div', 'mt-fsub', 'انتهت'), el('div', 'mt-fsub', relDay(m.at)));
+  else mid.append(el('div', 'mt-fday', relDay(m.at)), el('div', 'mt-ftime', fmtTime(m.at)));
   row.append(side(m.a), mid, side(m.b)); c.appendChild(row);
   c.onclick = () => onMatchClick(m);
   return c;
@@ -1530,7 +1537,7 @@ function matchRow(m) {
   const r = el('div', 'mt-row clickable');
   const teams = el('div', 'mt-teams'); const done = isDone(m);
   teams.append(matchTeam(m.a, done ? m.sa : null), matchTeam(m.b, done ? m.sb : null));
-  const when = el('div', 'mt-when'); when.append(el('div', null, fmtDay(m.at)), el('div', 'mt-t', done ? 'انتهت' : fmtTime(m.at)));
+  const when = el('div', 'mt-when'); when.append(el('div', null, relDay(m.at)), el('div', 'mt-t', done ? 'انتهت' : fmtTime(m.at)));
   r.append(teams, when);
   r.onclick = () => onMatchClick(m);
   return r;
@@ -1539,7 +1546,7 @@ function renderMatches() {
   const box = $('#matchesBody'); box.innerHTML = '';
   const all = (S.matches || []).slice().sort((x, y) => x.at - y.at);
   if (S.admin) {
-    const h = el('div', 'cup-sec-h'); h.appendChild(el('span', 'hint', 'اضغطي على أي مباراة لتعديلها أو لإدخال نتيجتها وإحصائيات اللاعبين.'));
+    const h = el('div', 'cup-sec-h'); h.appendChild(el('span', 'hint', 'اضغطي على أي مباراة ثم «إدارة المباراة» لإدخال التشكيلة والأحداث والإحصائيات.'));
     const b = el('button', 'btn primary sm', '+ مباراة'); b.type = 'button'; b.onclick = () => openGameForm(null); h.appendChild(b); box.appendChild(h);
   }
   if (!all.length) { box.appendChild(el('div', 'cup-empty', S.admin ? 'اضغطي "+ مباراة" وأضيفي أول مباراة.' : 'لم تُعلن المباريات بعد')); return; }
@@ -1566,7 +1573,7 @@ function openGameForm(id) {
   $('#gA').value = m ? m.a : ''; $('#gB').value = m ? m.b : '';
   $('#gAt').value = toLocalInput(m ? m.at : Date.now());
   $('#gDel').hidden = !m; $('#gDel').textContent = 'حذف المباراة'; $('#gErr').textContent = '';
-  $('#gRes').hidden = !m;
+  $('#gRes').hidden = false;
   $('#gTeams').innerHTML = ''; allClubs().forEach(([n]) => { const o = document.createElement('option'); o.value = n; $('#gTeams').appendChild(o); });
   openModal('#gameModal');
 }
@@ -1591,7 +1598,7 @@ $('#gameForm').onsubmit = async (e) => {
   catch (er) { $('#gErr').textContent = errText(er); }
 };
 $('#gRes').onclick = async () => {
-  try { const id = await saveGameBasics(); if (id) { closeModal('#gameModal'); openResults(id); } }
+  try { const id = await saveGameBasics(); if (id) { closeModal('#gameModal'); openMatchEditor(id); } }
   catch (er) { $('#gErr').textContent = errText(er); }
 };
 // حذف المباراة يحذف إحصائياتها من اللاعبين أيضًا
@@ -1607,117 +1614,307 @@ $('#gDel').onclick = async () => {
   } catch (er) { $('#gErr').textContent = errText(er); }
 };
 
-// ---------- نتيجة المباراة: بطاقة لكل لاعب من الفريقين ----------
-const RES_F = [['g', 'أهداف سجّلها'], ['a', 'تمريرات حاسمة'], ['yc', 'صفراء'], ['rc', 'حمراء'], ['pm', 'ركلة جزاء ضائعة'], ['og', 'هدف عكسي'], ['bo', 'أفضل لاعب (0-2)']];
-const RES_MAX = { g: 20, a: 20, yc: 2, rc: 1, pm: 5, og: 5, bo: 2 };
-let resId = null, resAuto = true;
+// ---------- تفاصيل المباراة (مثل قوقل): الأحداث، التشكيلة، الإحصائيات ----------
+const EV = { goal: 'هدف', og: 'هدف عكسي', pm: 'ركلة جزاء ضائعة', yc: 'إنذار', rc: 'طرد', sub: 'تبديل', var: 'فار / ملاحظة' };
+const EV_ICON = { goal: '⚽', og: '🔴⚽', pm: '❌', yc: '🟨', rc: '🟥', sub: '🔁', var: '📺' };
+const TST = [['shots', 'التسديدات'], ['sot', 'على المرمى'], ['poss', 'الاستحواذ %'], ['passes', 'التمريرات'], ['acc', 'دقة التمرير %'], ['fouls', 'الأخطاء'], ['off', 'التسلل'], ['corners', 'الركنيات']];
+const minKey = (s) => { const t = String(s || '').replace(/[^0-9+]/g, ''); const [x, y] = t.split('+'); return (Number(x) || 0) + (Number(y) || 0) / 100; };
+const minTxt = (s) => (s ? '\u2066' + String(s).replace(/[^0-9+]/g, '') + "'\u2069" : '');
 const clubPlayers = (c) => S.players.filter((p) => p.club === c).sort((x, y) => ORDER.indexOf(x.position) - ORDER.indexOf(y.position));
-function resCard(p, side, prev) {
-  const c = el('div', 'rs-card' + (prev ? ' on' : '')); c.dataset.pid = p.id; c.dataset.side = side;
-  const h = el('label', 'rs-h');
-  const cb = el('input'); cb.type = 'checkbox'; cb.className = 'rs-on'; cb.checked = !!prev;
-  h.append(cb, avatar(p, 'club-av'), el('span', 'pos ' + p.position, POS[p.position].one), el('b', 'rs-n', p.name), el('span', 'rs-played', 'لعب'));
-  c.appendChild(h);
-  const g = el('div', 'rs-grid');
-  RES_F.forEach(([k, l]) => {
-    const w = el('div', 'rs-f'); const lb = el('label', null, l);
-    const i = el('input'); i.type = 'number'; i.min = '0'; i.max = String(RES_MAX[k]); i.inputMode = 'numeric'; i.dataset.k = k; i.value = prev ? (prev[k] || 0) : 0;
-    w.append(lb, i); g.appendChild(w);
-  });
-  c.appendChild(g);
-  const pts = el('div', 'rs-pts'); c.appendChild(pts);
-  cb.onchange = () => { c.classList.toggle('on', cb.checked); resRecalc(); };
-  g.oninput = () => { if (!cb.checked) { cb.checked = true; c.classList.add('on'); } resRecalc(); };
-  return c;
-}
-function readCard(c) {
-  const v = {}; c.querySelectorAll('.rs-grid input').forEach((i) => { v[i.dataset.k] = Math.max(0, Math.min(RES_MAX[i.dataset.k], Math.round(Number(i.value) || 0))); });
-  return v;
-}
-function resRecalc() {
-  const cards = [...document.querySelectorAll('#resBody .rs-card')];
-  let ga = 0, gb = 0;
-  cards.forEach((c) => { if (!c.querySelector('.rs-on').checked) return; const v = readCard(c); if (c.dataset.side === 'a') { ga += v.g; gb += v.og; } else { gb += v.g; ga += v.og; } });
-  if (resAuto) { $('#rSa').value = ga; $('#rSb').value = gb; }
-  const sa = numOrNull($('#rSa').value) ?? 0, sb = numOrNull($('#rSb').value) ?? 0;
-  cards.forEach((c) => {
-    const p = S.byId.get(c.dataset.pid); const on = c.querySelector('.rs-on').checked;
-    const e = resEntry(p, c.dataset.side, readCard(c), on, sa, sb, 0);
-    c.querySelector('.rs-pts').textContent = on ? `النقاط: ${matchPts(p.position, e)}` : 'لم يلعب';
-  });
-}
-function resEntry(p, side, v, on, sa, sb, round) {
-  const m = (S.matches || []).find((x) => x.id === resId);
-  const gf = side === 'a' ? sa : sb, ga = side === 'a' ? sb : sa;
-  return { round, opp: side === 'a' ? m.b : m.a, home: side === 'a', gf, ga, min: on ? 90 : 0, sv: 0, ...v, fx: resId };
-}
-function openResults(id) {
-  const m = (S.matches || []).find((x) => x.id === id); if (!m || !S.admin) return;
-  resId = id; resAuto = !isDone(m);
-  $('#resTitle').textContent = `نتيجة: ${m.a} × ${m.b}`;
-  const sel = $('#rRound'); sel.innerHTML = '';
-  const cur = m.round || gwOfTime(m.at);
-  const ns = S.gws.length ? S.gws.map((g) => g.n) : [cur];
-  if (!ns.includes(cur)) ns.push(cur);
-  ns.sort((x, y) => x - y).forEach((n) => { const o = document.createElement('option'); o.value = n; o.textContent = gwName(n); sel.appendChild(o); });
-  sel.value = cur;
-  $('#rSa').value = sc(m.sa); $('#rSb').value = sc(m.sb);
-  $('#rLa').textContent = 'أهداف ' + m.a; $('#rLb').textContent = 'أهداف ' + m.b;
-  const body = $('#resBody'); body.innerHTML = '';
-  [['a', m.a], ['b', m.b]].forEach(([side, club]) => {
-    const sec = el('div', 'rs-sec'); const hh = el('div', 'rs-team'); hh.append(tlogo(club, 'md', true), el('b', null, club)); sec.appendChild(hh);
-    const ps = clubPlayers(club);
-    if (!ps.length) sec.appendChild(el('div', 'empty-msg', 'لا يوجد لاعبون مسجّلون في هذا الفريق (تأكدي أن اسم الفريق مطابق).'));
-    ps.forEach((p) => sec.appendChild(resCard(p, side, (p.matches || []).find((x) => x.fx === id && num(x.min) > 0))));
-    body.appendChild(sec);
-  });
-  $('#rErr').textContent = ''; $('#rSave').disabled = false;
-  resRecalc(); openModal('#resModal');
-}
-['#rSa', '#rSb'].forEach((s) => $(s).addEventListener('input', () => { resAuto = false; resRecalc(); }));
-$('#rAuto').onclick = () => { resAuto = true; resRecalc(); };
-$('#resForm').onsubmit = async (e) => {
-  e.preventDefault();
-  const sa = numOrNull($('#rSa').value), sb = numOrNull($('#rSb').value);
-  if (sa == null || sb == null) { $('#rErr').textContent = 'اكتبي نتيجة الفريقين'; return; }
-  const round = Number($('#rRound').value) || 1;
-  const m = (S.matches || []).find((x) => x.id === resId);
-  $('#rSave').disabled = true;
-  try {
-    for (const c of document.querySelectorAll('#resBody .rs-card')) {
-      const p = S.byId.get(c.dataset.pid); const on = c.querySelector('.rs-on').checked;
-      // نستبدل إحصائيات هذه المباراة (ونفس الجولة) فقط
-      const ms = (p.matches || []).filter((x) => x.fx !== resId && x.round !== round);
-      if (on) ms.push(resEntry(p, c.dataset.side, readCard(c), true, sa, sb, round));
-      ms.sort((x, y) => x.round - y.round);
-      const same = JSON.stringify(ms) === JSON.stringify([...(p.matches || [])].sort((x, y) => x.round - y.round));
-      if (same) continue;
-      const fixtures = (p.fixtures || []).filter((f) => f.round !== round);
-      await patchPlayer(p.id, { matches: ms, fixtures, points: totalPts({ position: p.position, matches: ms }) });
-    }
-    await setDoc(doc(S.db, 'matches', resId), { a: m.a, b: m.b, at: m.at, sa, sb, round, updatedAt: Date.now() });
-    closeModal('#resModal'); toast('تم حفظ النتيجة ونقاط اللاعبين ✅');
-  } catch (er) { $('#rSave').disabled = false; $('#rErr').textContent = errText(er); }
-};
+const sideClub = (m, s) => (s === 'a' ? m.a : m.b);
 
-// عرض نتيجة مباراة منتهية للزوار
-function openGameView(id) {
-  const m = (S.matches || []).find((x) => x.id === id); if (!m) return;
-  $('#gvTitle').textContent = `${m.a} ${m.sa} - ${m.sb} ${m.b}`;
-  const body = $('#gvBody'); body.innerHTML = '';
-  [m.a, m.b].forEach((club) => {
-    const sec = el('div', 'rs-sec'); const hh = el('div', 'rs-team'); hh.append(tlogo(club, 'md', true), el('b', null, club)); sec.appendChild(hh);
-    const rows = clubPlayers(club).map((p) => [p, (p.matches || []).find((x) => x.fx === id && num(x.min) > 0)]).filter(([, e]) => e);
-    if (!rows.length) sec.appendChild(el('div', 'empty-msg', 'لا توجد إحصائيات'));
-    rows.forEach(([p, e]) => {
-      const r = el('div', 'gv-row clickable'); const mid = el('div', 'gv-mid');
-      mid.append(el('b', null, p.name), el('div', 'pf-ms', summaryLine(p.position, e).replace(/⏱ \d+د\s*·?\s*/, '')));
-      const pts = matchPts(p.position, e);
-      r.append(avatar(p, 'club-av'), mid, el('div', 'pf-mpts ' + (pts > 0 ? 'up' : pts < 0 ? 'down' : ''), String(pts)));
-      r.onclick = () => { closeModal('#gameView'); openProfile(p.id); };
-      sec.appendChild(r);
+// كل شيء يُشتق من التشكيلة والأحداث: النتيجة ونقاط كل لاعب
+function deriveMatch(m) {
+  const ev = [...(m.events || [])].sort((x, y) => minKey(x.min) - minKey(y.min));
+  let sa = 0, sb = 0; const pl = {};
+  const P = (id) => (pl[id] = pl[id] || { g: 0, a: 0, yc: 0, rc: 0, pm: 0, og: 0, in: null, out: null, goals: [] });
+  const lu = m.lineup || {};
+  ['a', 'b'].forEach((s) => { ((lu[s] || {}).st || []).forEach((id) => { P(id).start = true; P(id).side = s; }); ((lu[s] || {}).bn || []).forEach((id) => { P(id).bench = true; P(id).side = s; }); });
+  ev.forEach((e) => {
+    if (e.t === 'goal') { if (e.s === 'a') sa++; else sb++; if (e.p) { P(e.p).g++; P(e.p).side = e.s; } if (e.as) P(e.as).a++; }
+    else if (e.t === 'og') { if (e.s === 'a') sb++; else sa++; if (e.p) { P(e.p).og++; P(e.p).side = e.s; } }
+    else if (e.t === 'yc' && e.p) P(e.p).yc++;
+    else if (e.t === 'rc' && e.p) P(e.p).rc++;
+    else if (e.t === 'pm' && e.p) P(e.p).pm++;
+    else if (e.t === 'sub') { if (e.p) { P(e.p).in = e.min; P(e.p).side = e.s; } if (e.out) P(e.out).out = e.min; }
+    e._sa = sa; e._sb = sb;
+  });
+  Object.entries(pl).forEach(([id, x]) => { x.played = !!(x.start || x.in); });
+  return { ev, sa, sb, pl };
+}
+function playerEntry(m, id, x, sa, sb, round) {
+  const p = S.byId.get(id); const s = x.side || (p && p.club === m.b ? 'b' : 'a');
+  return { round, opp: s === 'a' ? m.b : m.a, home: s === 'a', gf: s === 'a' ? sa : sb, ga: s === 'a' ? sb : sa, min: x.played ? 90 : 0, sv: 0,
+    g: x.g, a: x.a, yc: Math.min(2, x.yc), rc: Math.min(1, x.rc), pm: x.pm, og: x.og, bo: Math.max(0, Math.min(2, Number((m.bonus || {})[id]) || 0)), fx: m.id };
+}
+
+// ===== محرر المباراة (للمشرف) =====
+let MX = null, mxTab = 'lineup';
+function openMatchEditor(id) {
+  const m = (S.matches || []).find((x) => x.id === id); if (!m || !S.admin) return;
+  MX = JSON.parse(JSON.stringify({ lineup: { a: { st: [], bn: [] }, b: { st: [], bn: [] } }, events: [], stats: {}, ratings: {}, bonus: {}, ...m }));
+  ['a', 'b'].forEach((s) => { MX.lineup[s] = { st: [], bn: [], ...(MX.lineup[s] || {}) }; });
+  MX.round = m.round || gwOfTime(m.at);
+  $('#mxTitle').textContent = `${m.a} × ${m.b}`;
+  const sel = $('#mxRound'); sel.innerHTML = '';
+  const ns = S.gws.length ? S.gws.map((g) => g.n) : [MX.round]; if (!ns.includes(MX.round)) ns.push(MX.round);
+  ns.sort((x, y) => x - y).forEach((n) => { const o = document.createElement('option'); o.value = n; o.textContent = gwName(n); sel.appendChild(o); });
+  sel.value = MX.round; sel.onchange = () => { MX.round = Number(sel.value); };
+  $('#mxErr').textContent = ''; $('#mxSave').disabled = false; mxTab = 'lineup';
+  mxRender(); openModal('#mxModal');
+}
+function mxScore() { const d = deriveMatch(MX); $('#mxScore').textContent = `${MX.a} ${d.sa} - ${d.sb} ${MX.b}`; return d; }
+function mxRender() {
+  document.querySelectorAll('#mxTabs .pf-tab').forEach((b) => b.classList.toggle('active', b.dataset.t === mxTab));
+  const body = $('#mxBody'); body.innerHTML = '';
+  if (mxTab === 'lineup') mxLineup(body); else if (mxTab === 'events') mxEvents(body); else mxStats(body);
+  mxScore();
+}
+document.querySelectorAll('#mxTabs .pf-tab').forEach((b) => b.onclick = () => { mxTab = b.dataset.t; mxRender(); });
+
+function mxLineup(body) {
+  body.appendChild(el('p', 'hint', 'اختاري لكل لاعب: أساسي أو احتياط. التقييم (0-10) وأفضل لاعب تكتبينهم بإيدك. اللاعب الأساسي أو اللي دخل بديل ياخذ نقاط المشاركة.'));
+  const d = deriveMatch(MX);
+  ['a', 'b'].forEach((s) => {
+    const club = sideClub(MX, s); const sec = el('div', 'rs-sec');
+    const hh = el('div', 'rs-team'); hh.append(tlogo(club, 'md', true), el('b', null, club)); sec.appendChild(hh);
+    const ps = clubPlayers(club);
+    if (!ps.length) sec.appendChild(el('div', 'empty-msg', 'لا يوجد لاعبون بهذا الاسم في تبويب الفرق.'));
+    ps.forEach((p) => {
+      const r = el('div', 'mx-pl'); const L = MX.lineup[s];
+      const role = L.st.includes(p.id) ? 'st' : L.bn.includes(p.id) ? 'bn' : '';
+      const nm = el('div', 'mx-n'); nm.append(avatar(p, 'club-av'), el('span', 'pos ' + p.position, POS[p.position].one), el('b', null, p.name));
+      const rs = el('select', 'mx-role'); [['', '— لم يشارك'], ['st', 'أساسي'], ['bn', 'احتياط']].forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; rs.appendChild(o); }); rs.value = role;
+      const rt = el('input', 'mx-rt'); rt.type = 'number'; rt.step = '0.1'; rt.min = '0'; rt.max = '10'; rt.placeholder = 'تقييم'; rt.value = MX.ratings[p.id] ?? '';
+      const bo = el('select', 'mx-bo'); [0, 1, 2].forEach((v) => { const o = document.createElement('option'); o.value = v; o.textContent = v ? `⭐ +${v}` : 'أفضل لاعب: 0'; bo.appendChild(o); }); bo.value = MX.bonus[p.id] || 0;
+      const pts = el('span', 'mx-pts');
+      const upd = () => { const x = deriveMatch(MX).pl[p.id]; if (!x || !x.played) { pts.textContent = ''; return; } const d2 = deriveMatch(MX); pts.textContent = matchPts(p.position, playerEntry(MX, p.id, x, d2.sa, d2.sb, 0)) + ' ن'; };
+      rs.onchange = () => { L.st = L.st.filter((x) => x !== p.id); L.bn = L.bn.filter((x) => x !== p.id); if (rs.value) L[rs.value].push(p.id); upd(); mxScore(); };
+      rt.oninput = () => { const v = Number(rt.value); if (rt.value === '' || !Number.isFinite(v)) delete MX.ratings[p.id]; else MX.ratings[p.id] = Math.max(0, Math.min(10, Math.round(v * 10) / 10)); };
+      bo.onchange = () => { const v = Number(bo.value); if (v) MX.bonus[p.id] = v; else delete MX.bonus[p.id]; upd(); };
+      const ctl = el('div', 'mx-ctl'); ctl.append(rs, rt, bo, pts);
+      r.append(nm, ctl); sec.appendChild(r); upd();
     });
     body.appendChild(sec);
   });
-  openModal('#gameView');
+}
+
+function optList(sel, list, empty) {
+  sel.innerHTML = ''; if (empty) { const o = document.createElement('option'); o.value = ''; o.textContent = empty; sel.appendChild(o); }
+  list.forEach((p) => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; sel.appendChild(o); });
+}
+function mxEvents(body) {
+  const f = el('div', 'mx-evf');
+  const t = el('select'); Object.entries(EV).forEach(([k, v]) => { const o = document.createElement('option'); o.value = k; o.textContent = EV_ICON[k] + ' ' + v; t.appendChild(o); });
+  const mn = el('input'); mn.type = 'text'; mn.placeholder = 'الدقيقة مثل 45 أو 90+3'; mn.maxLength = 7; mn.inputMode = 'text';
+  const sd = el('select'); [['a', MX.a], ['b', MX.b]].forEach(([v, n]) => { const o = document.createElement('option'); o.value = v; o.textContent = n; sd.appendChild(o); });
+  const pl = el('select'), x2 = el('select'), note = el('input'); note.type = 'text'; note.maxLength = 80; note.placeholder = 'مثال: الفار ألغى الهدف';
+  const l1 = el('label'), l2 = el('label');
+  const refresh = () => {
+    const ps = clubPlayers(sideClub(MX, sd.value)); const k = t.value;
+    l1.textContent = k === 'sub' ? 'اللاعب الداخل' : k === 'og' ? 'اللاعب (سجّل في مرماه)' : 'اللاعب';
+    optList(pl, ps, k === 'var' ? '— بدون لاعب' : null);
+    l2.textContent = k === 'goal' ? 'صناعة (اختياري)' : k === 'sub' ? 'اللاعب الخارج' : '';
+    if (k === 'goal') optList(x2, ps.filter((p) => p.id !== pl.value), '— بدون');
+    else if (k === 'sub') optList(x2, ps, null);
+    x2.parentElement.hidden = !(k === 'goal' || k === 'sub'); note.parentElement.hidden = k !== 'var';
+  };
+  const wrap = (lbl, inp) => { const w = el('div'); const lb = typeof lbl === 'string' ? el('label', null, lbl) : lbl; w.append(lb, inp); return w; };
+  f.append(wrap('النوع', t), wrap('الدقيقة', mn), wrap('الفريق', sd), wrap(l1, pl), wrap(l2, x2), wrap('الملاحظة', note));
+  const add = el('button', 'btn add', '+ إضافة الحدث'); add.type = 'button';
+  const er = el('div', 'err');
+  add.onclick = () => {
+    if (!mn.value.replace(/[^0-9]/g, '')) { er.textContent = 'اكتبي الدقيقة'; return; }
+    const e = { t: t.value, min: mn.value.replace(/[^0-9+]/g, '').slice(0, 7), s: sd.value, p: pl.value || null };
+    if (e.t === 'goal') e.as = x2.value || null;
+    if (e.t === 'sub') { e.out = x2.value || null; if (e.out === e.p) { er.textContent = 'اختاري لاعبين مختلفين'; return; } }
+    if (e.t === 'var') e.note = note.value.trim().slice(0, 80);
+    else if (!e.p) { er.textContent = 'اختاري اللاعب'; return; }
+    MX.events.push(e); mn.value = ''; note.value = ''; er.textContent = ''; drawList(); mxScore();
+  };
+  t.onchange = refresh; sd.onchange = refresh; pl.onchange = () => { if (t.value === 'goal') optList(x2, clubPlayers(sideClub(MX, sd.value)).filter((p) => p.id !== pl.value), '— بدون'); };
+  body.append(f, add, er); refresh();
+  const list = el('div', 'mx-evlist'); body.appendChild(list);
+  const pn = (id) => (S.byId.get(id) || {}).name || '؟';
+  function drawList() {
+    list.innerHTML = '';
+    const evs = MX.events.map((e, i) => [e, i]).sort((x, y) => minKey(x[0].min) - minKey(y[0].min));
+    if (!evs.length) list.appendChild(el('div', 'empty-msg', 'لا توجد أحداث بعد.'));
+    evs.forEach(([e, i]) => {
+      const r = el('div', 'mx-ev');
+      let txt = `${EV_ICON[e.t]} ${minTxt(e.min)} · ${EV[e.t]} · ${sideClub(MX, e.s)}`;
+      if (e.p) txt += ` · ${pn(e.p)}`; if (e.t === 'goal' && e.as) txt += ` (صناعة ${pn(e.as)})`; if (e.t === 'sub') txt += ` ↔ ${pn(e.out)}`; if (e.note) txt += ` · ${e.note}`;
+      const del = el('button', 'pf-edit', '✕'); del.type = 'button'; del.onclick = () => { MX.events.splice(i, 1); drawList(); mxScore(); };
+      r.append(el('span', null, txt), del); list.appendChild(r);
+    });
+  }
+  drawList();
+}
+function mxStats(body) {
+  body.appendChild(el('p', 'hint', 'اكتبي إحصائيات الفريقين (اختياري). الإنذارات والطرد تنحسب تلقائيًا من الأحداث.'));
+  const g = el('div', 'mx-st');
+  g.append(el('b', null, MX.a), el('span'), el('b', null, MX.b));
+  TST.forEach(([k, l]) => {
+    const v = MX.stats[k] || [null, null];
+    const mk = (j) => { const i = el('input'); i.type = 'number'; i.min = '0'; i.inputMode = 'numeric'; i.value = v[j] ?? ''; i.oninput = () => { const arr = MX.stats[k] || [null, null]; arr[j] = i.value === '' ? null : Math.max(0, Math.round(Number(i.value)) || 0); MX.stats[k] = arr; }; return i; };
+    g.append(mk(0), el('span', 'mx-stl', l), mk(1));
+  });
+  body.appendChild(g);
+}
+$('#mxForm').onsubmit = async (e) => {
+  e.preventDefault(); if (!MX) return;
+  const d = deriveMatch(MX); const round = MX.round;
+  $('#mxSave').disabled = true;
+  try {
+    const clubs = [MX.a, MX.b];
+    for (const p of S.players.filter((x) => clubs.includes(x.club) || (x.matches || []).some((y) => y.fx === MX.id))) {
+      const x = d.pl[p.id];
+      const ms = (p.matches || []).filter((y) => y.fx !== MX.id && !(y.round === round && clubs.includes(p.club)));
+      if (x && x.played) ms.push(playerEntry(MX, p.id, x, d.sa, d.sb, round));
+      ms.sort((y, z) => y.round - z.round);
+      if (JSON.stringify(ms) === JSON.stringify([...(p.matches || [])].sort((y, z) => y.round - z.round))) continue;
+      await patchPlayer(p.id, { matches: ms, fixtures: (p.fixtures || []).filter((f) => f.round !== round), points: totalPts({ position: p.position, matches: ms }) });
+    }
+    const clean = (o) => JSON.parse(JSON.stringify(o));
+    const ev = MX.events.map(({ _sa, _sb, ...r }) => r);
+    const out = clean({ a: MX.a, b: MX.b, at: MX.at, sa: d.sa, sb: d.sb, round, lineup: MX.lineup, events: ev, stats: MX.stats, ratings: MX.ratings, bonus: MX.bonus, updatedAt: Date.now() });
+    await setDoc(doc(S.db, 'matches', MX.id), out);
+    closeModal('#mxModal'); toast('تم حفظ المباراة ونقاط اللاعبين ✅');
+  } catch (er) { $('#mxSave').disabled = false; $('#mxErr').textContent = errText(er); }
+};
+$('#mxClear').onclick = () => { if (!MX) return; const b = $('#mxClear'); if (b.textContent !== 'تأكيد؟') { b.textContent = 'تأكيد؟'; return; } b.textContent = 'إلغاء النتيجة'; MX.events = []; MX.lineup = { a: { st: [], bn: [] }, b: { st: [], bn: [] } }; mxRender(); };
+
+// ===== صفحة المباراة (للجميع) =====
+let mvId = null, mvTab = 'events';
+function openMatchView(id) { mvId = id; mvTab = 'events'; renderMatchView(); openModal('#mvModal'); }
+const rtClass = (r) => (r >= 7 ? 'g' : r >= 5 ? 'y' : 'r');
+function renderMatchView() {
+  const m = (S.matches || []).find((x) => x.id === mvId); if (!m) { closeModal('#mvModal'); return; }
+  const d = deriveMatch(m); const played = (m.events || []).length || (m.lineup && ((m.lineup.a || {}).st || []).length) || isDone(m);
+  const body = $('#mvBody'); body.innerHTML = '';
+  $('#mvTitle').textContent = `${m.a} × ${m.b}`;
+  // الرأس
+  const hd = el('div', 'mv-head');
+  const top = el('div', 'mv-top'); top.append(el('span', null, `${gwName(m.round || gwOfTime(m.at))} · ${relDay(m.at)}`), el('b', null, isDone(m) ? 'انتهت' : fmtTime(m.at)));
+  hd.appendChild(top);
+  const row = el('div', 'mv-row');
+  const side = (n) => { const s = el('div', 'mt-fside'); s.append(tlogo(n, 'xl', true), el('div', 'mt-fname', n)); return s; };
+  const sc2 = el('div', 'mv-score');
+  if (isDone(m)) sc2.append(el('b', null, String(m.sa)), el('span', null, '-'), el('b', null, String(m.sb)));
+  else sc2.append(el('span', 'mv-vs', 'ضد'));
+  row.append(side(m.a), sc2, side(m.b)); hd.appendChild(row);
+  const scr = el('div', 'mv-scorers');
+  ['a', 'b'].forEach((s) => {
+    const c = el('div', 'mv-sc ' + s);
+    d.ev.filter((e) => (e.t === 'goal' && e.s === s) || (e.t === 'og' && e.s !== s)).forEach((e) => c.appendChild(el('div', null, `${(S.byId.get(e.p) || {}).name || '؟'}${e.t === 'og' ? ' (ع.ع)' : ''} ${minTxt(e.min)}`)));
+    scr.appendChild(c); if (s === 'a') scr.appendChild(el('div', 'mv-ball', d.ev.some((e) => e.t === 'goal' || e.t === 'og') ? '⚽' : ''));
+  });
+  hd.appendChild(scr);
+  if (S.admin) { const ed = el('div', 'mv-adm'); const b1 = el('button', 'btn primary sm', '📝 إدارة المباراة (التشكيلة والأحداث)'); b1.type = 'button'; b1.onclick = () => { closeModal('#mvModal'); openMatchEditor(m.id); }; const b2 = el('button', 'btn ghost sm', 'تعديل الفريقين والوقت'); b2.type = 'button'; b2.onclick = () => { closeModal('#mvModal'); openGameForm(m.id); }; ed.append(b1, b2); hd.appendChild(ed); }
+  body.appendChild(hd);
+  if (!played) { body.appendChild(el('div', 'empty-msg', 'تظهر التفاصيل بعد المباراة.')); return; }
+  const tabs = el('div', 'pf-tabs mv-tabs');
+  [['events', 'الأحداث'], ['lineup', 'التشكيلة'], ['stats', 'الإحصائيات']].forEach(([k, l]) => { const b = el('button', 'pf-tab' + (mvTab === k ? ' active' : ''), l); b.type = 'button'; b.onclick = () => { mvTab = k; renderMatchView(); }; tabs.appendChild(b); });
+  body.appendChild(tabs);
+  const pane = el('div', 'mv-pane'); body.appendChild(pane);
+  if (mvTab === 'events') mvEvents(m, d, pane); else if (mvTab === 'lineup') mvLineup(m, d, pane); else mvStats(m, d, pane);
+}
+function evPlayer(id, sub) {
+  const p = S.byId.get(id); const r = el('div', 'ev-pl');
+  if (!p) { r.appendChild(el('div', 'ev-pn', '؟')); return r; }
+  const tx = el('div', 'ev-tx'); tx.append(el('div', 'ev-pn', p.name), el('div', 'ev-ps', `${p.club} · ${POS[p.position].one}`));
+  if (sub) tx.appendChild(el('div', 'ev-ps', sub));
+  r.append(tx, avatar(p, 'ev-av')); r.classList.add('clickable'); r.onclick = () => { closeModal('#mvModal'); openProfile(p.id); };
+  return r;
+}
+function mvEvents(m, d, pane) {
+  if (!d.ev.length) { pane.appendChild(el('div', 'empty-msg', 'لا توجد أحداث مسجّلة.')); return; }
+  const pn = (id) => (S.byId.get(id) || {}).name || '؟';
+  [...d.ev].reverse().forEach((e) => {
+    const c = el('div', 'ev ev-' + e.t + ' s' + e.s);
+    if (e.t === 'goal' || e.t === 'og') {
+      const h = el('div', 'ev-goal'); h.append(el('div', 'ev-ic', '⚽'), el('div', 'ev-gt', e.t === 'og' ? 'هدف عكسي!' : 'جووووول!'), el('div', 'ev-min', minTxt(e.min)));
+      const sc3 = el('div', 'ev-sc'); sc3.append(el('span', null, m.a), el('b', null, String(e._sa)), el('span', null, '-'), el('b', null, String(e._sb)), el('span', null, m.b));
+      c.append(h, sc3, evPlayer(e.p, e.t === 'goal' && e.as ? 'صناعة: ' + pn(e.as) : ''));
+    } else if (e.t === 'var') {
+      const h = el('div', 'ev-goal'); h.append(el('div', 'ev-ic', '📺'), el('div', 'ev-gt', 'الفار'), el('div', 'ev-min', minTxt(e.min)));
+      c.append(h, el('div', 'ev-note', e.note || sideClub(m, e.s)));
+    } else {
+      const h = el('div', 'ev-h'); h.append(el('span', 'ev-hi', EV_ICON[e.t]), el('b', null, EV[e.t]), el('span', 'ev-hm', minTxt(e.min)));
+      c.appendChild(h);
+      if (e.t === 'sub') { c.append(el('div', 'ev-in', 'دخول'), evPlayer(e.p), el('div', 'ev-out', 'خروج'), evPlayer(e.out)); }
+      else c.appendChild(evPlayer(e.p));
+    }
+    pane.appendChild(c);
+  });
+}
+function lineupPlayer(id, x, m) {
+  const p = S.byId.get(id); const w = el('div', 'mv-lp clickable');
+  if (!p) return w;
+  const av = el('div', 'mv-av'); av.appendChild(avatar(p, 'mv-pic'));
+  const r = (m.ratings || {})[id]; if (r != null) av.appendChild(el('span', 'mv-rt ' + rtClass(r), r.toFixed(1)));
+  const ic = el('div', 'mv-ic');
+  if (x) { for (let k = 0; k < x.g; k++) ic.appendChild(el('span', null, '⚽')); if (x.og) ic.appendChild(el('span', null, '🔴')); if (x.a) ic.appendChild(el('span', null, '👟'.repeat(x.a))); if (x.yc) ic.appendChild(el('span', null, x.yc > 1 ? '🟨🟨' : '🟨')); if (x.rc) ic.appendChild(el('span', null, '🟥')); if (x.out) ic.appendChild(el('span', 'mv-out', '🔻')); }
+  av.appendChild(ic);
+  w.append(av, el('div', 'mv-ln', p.name));
+  w.onclick = () => { closeModal('#mvModal'); openProfile(p.id); };
+  return w;
+}
+function mvLineup(m, d, pane) {
+  const lu = m.lineup || {};
+  ['a', 'b'].forEach((s, si) => {
+    const st = ((lu[s] || {}).st || []).filter((id) => S.byId.get(id));
+    const club = sideClub(m, s);
+    const rows = ORDER.map((k) => st.filter((id) => S.byId.get(id).position === k)).filter((r) => r.length);
+    const form = ORDER.slice(1).map((k) => st.filter((id) => S.byId.get(id).position === k).length).filter((n) => n).join('-');
+    const card = el('div', 'mv-team');
+    const hh = el('div', 'mv-th'); hh.append(tlogo(club, 'md', true), el('b', null, club), el('span', 'mv-form', form || '—')); card.appendChild(hh);
+    const pitch = el('div', 'mv-pitch' + (si ? ' flip' : ''));
+    pitch.appendChild(el('div', 'mv-box'));
+    if (!st.length) pitch.appendChild(el('div', 'empty-msg', 'لم تُسجَّل التشكيلة'));
+    (si ? [...rows].reverse() : rows).forEach((r) => { const rr = el('div', 'mv-prow'); r.forEach((id) => rr.appendChild(lineupPlayer(id, d.pl[id], m))); pitch.appendChild(rr); });
+    card.appendChild(pitch); pane.appendChild(card);
+  });
+  // الاحتياط
+  const bn = el('div', 'mv-bench'); bn.appendChild(el('div', 'mv-bt', 'الاحتياط'));
+  const cols = el('div', 'mv-bcols');
+  ['a', 'b'].forEach((s) => {
+    const ids = [...new Set([...((lu[s] || {}).bn || []), ...Object.entries(d.pl).filter(([, x]) => x.in && x.side === s).map(([id]) => id)])].filter((id) => S.byId.get(id) && !((lu[s] || {}).st || []).includes(id));
+    const col = el('div', 'mv-bcol');
+    if (!ids.length) col.appendChild(el('div', 'ev-ps', '—'));
+    ids.forEach((id) => {
+      const p = S.byId.get(id); const x = d.pl[id] || {}; const r = el('div', 'mv-brow clickable');
+      const av = el('div', 'mv-av sm'); av.appendChild(avatar(p, 'mv-pic')); const rt = (m.ratings || {})[id]; if (rt != null) av.appendChild(el('span', 'mv-rt ' + rtClass(rt), rt.toFixed(1)));
+      const tx = el('div', 'ev-tx'); tx.appendChild(el('div', 'ev-pn', p.name));
+      const meta = x.in ? `🟢⬆ ${minTxt(x.in)}${x.g ? ' ⚽' : ''}${x.a ? ' 👟' : ''}${x.yc ? ' 🟨' : ''}${x.rc ? ' 🟥' : ''}` : POS[p.position].one;
+      tx.appendChild(el('div', 'ev-ps', meta));
+      r.append(av, tx); r.onclick = () => { closeModal('#mvModal'); openProfile(p.id); };
+      col.appendChild(r);
+    });
+    cols.appendChild(col);
+  });
+  bn.appendChild(cols); pane.appendChild(bn);
+  const lg = el('div', 'mv-legend'); lg.innerHTML = '<span>⚽ هدف</span><span>🔴 هدف عكسي</span><span>👟 صناعة</span><span>🟨 إنذار</span><span>🟥 طرد</span><span>🟢⬆ دخل</span><span>🔻 خرج</span><span>التقييم من 0 إلى 10</span>';
+  pane.appendChild(lg);
+}
+function mvStats(m, d, pane) {
+  const st = { ...(m.stats || {}) };
+  const yc = [0, 0], rc = [0, 0]; d.ev.forEach((e) => { const j = e.s === 'b' ? 1 : 0; if (e.t === 'yc') yc[j]++; if (e.t === 'rc') rc[j]++; });
+  const rows = [...TST.slice(0, 6), ['yc', 'الإنذارات'], ['rc', 'الطرد'], ...TST.slice(6)];
+  const t = el('div', 'mv-st');
+  const hh = el('div', 'mv-srow h'); hh.append(tlogo(m.a, 'md', true), el('b', null, 'إحصائيات الفريقين'), tlogo(m.b, 'md', true)); t.appendChild(hh);
+  let any = false;
+  rows.forEach(([k, l]) => {
+    const v = k === 'yc' ? yc : k === 'rc' ? rc : (st[k] || [null, null]);
+    if (v[0] == null && v[1] == null) return; any = true;
+    const pct = k === 'poss' || k === 'acc';
+    const f = (x) => (x == null ? '—' : x + (pct ? '%' : ''));
+    const lowGood = k === 'fouls' || k === 'off' || k === 'yc' || k === 'rc';
+    const best = v[0] == null || v[1] == null || v[0] === v[1] ? -1 : (lowGood ? (v[0] < v[1] ? 0 : 1) : (v[0] > v[1] ? 0 : 1));
+    const r = el('div', 'mv-srow');
+    r.append(el('span', 'mv-sv' + (best === 0 ? ' best a' : ''), f(v[0])), el('span', 'mv-sl', l), el('span', 'mv-sv' + (best === 1 ? ' best b' : ''), f(v[1])));
+    t.appendChild(r);
+  });
+  if (!any) t.appendChild(el('div', 'empty-msg', 'لا توجد إحصائيات'));
+  pane.appendChild(t);
 }
