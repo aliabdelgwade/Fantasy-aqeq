@@ -10,8 +10,8 @@ import {
 
 import {
   SC, num, breakdown, sumObj, matchPts, totalPts, roundMatches, roundPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
-} from './game.js?v=20261121i';
-import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261121i';
+} from './game.js?v=20261121j';
+import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261121j';
 
 // ---------- سجل التعديلات: كل حفظ أو حذف من المشرفين ينكتب في logs ----------
 const NO_LOG = /^(logs|leagues)\/|\/(picks|preds|votes|comments)\//;
@@ -2170,7 +2170,10 @@ function renderPotw() {
 function potwPlayers() {
   const n = Number($('#pwGw').value); const sel = $('#pwPl'); const cur = sel.value || (S.potw && S.potw.pid) || '';
   sel.innerHTML = '';
-  S.players.map((p) => ({ p, pts: roundPts(p, n), pl: roundMatches(p, n).some((m) => num(m.min) > 0) }))
+  const q = ($('#pwSearch').value || '').trim().toLowerCase();
+  const list = S.players.filter((p) => !q || p.name.toLowerCase().includes(q) || (p.club || '').toLowerCase().includes(q) || p.id === cur);
+  if (!list.length) { const o = document.createElement('option'); o.value = ''; o.textContent = 'ما فيه لاعب بهذا الاسم'; sel.appendChild(o); return; }
+  list.map((p) => ({ p, pts: roundPts(p, n), pl: roundMatches(p, n).some((m) => num(m.min) > 0) }))
     .sort((x, y) => (y.pl - x.pl) || y.pts - x.pts || x.p.name.localeCompare(y.p.name, 'ar'))
     .forEach(({ p, pts, pl }) => { const o = document.createElement('option'); o.value = p.id; o.textContent = `${p.name} · ${p.club || ''}${pl ? ` · ${pts} نقطة` : ''}`; sel.appendChild(o); });
   if (cur && S.byId.get(cur)) sel.value = cur;
@@ -2183,11 +2186,12 @@ function openPotwForm() {
   if (!gs.length) { const o = document.createElement('option'); o.value = 1; o.textContent = 'الجولة 1'; sel.appendChild(o); }
   const past = gs.filter((g) => g.deadline <= Date.now());
   sel.value = String(S.potw && S.potw.n ? S.potw.n : (past.length ? past[past.length - 1].n : (gs[0] ? gs[0].n : 1)));
-  $('#pwPl').value = ''; potwPlayers(); sel.onchange = potwPlayers;
+  $('#pwSearch').value = ''; $('#pwPl').value = ''; potwPlayers(); sel.onchange = potwPlayers;
   $('#pwNote').value = (S.potw && S.potw.note) || '';
   $('#pwDel').hidden = !(S.potw && S.potw.pid); $('#pwErr').textContent = '';
   openModal('#potwModal');
 }
+$('#pwSearch').oninput = () => { const s = $('#pwPl'); const keep = s.value; s.value = ''; potwPlayers(); const q = $('#pwSearch').value.trim(); if (q && s.options.length && s.options[0].value) s.selectedIndex = 0; else if (keep) s.value = keep; };
 $('#potwForm').onsubmit = async (e) => {
   e.preventDefault();
   const pid = $('#pwPl').value; if (!pid) { $('#pwErr').textContent = 'اختاري اللاعب'; return; }
