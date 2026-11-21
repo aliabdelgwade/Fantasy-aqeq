@@ -41,6 +41,7 @@
     <button class="tab active" data-tab="pick">اختيار الفريق</button>
     <button class="tab" data-tab="table">ترتيب الدوري</button>
     <button class="tab" data-tab="clubs">الفرق</button>
+    <button class="tab" data-tab="matches">المباريات</button>
     <button class="tab" data-tab="cup">🏆 البطولة</button>
     <button class="gw-btn" id="gwAdmin" type="button" hidden>⚙️ إدارة الجولات</button>
   </nav>
@@ -101,6 +102,11 @@
     <h2>الفرق</h2>
     <div id="clubsBody"></div>
     <input type="file" id="clubFile" accept="image/*" hidden>
+  </section>
+
+  <section id="tab-matches" class="panel table-panel" hidden>
+    <h2>المباريات</h2>
+    <div id="matchesBody"></div>
   </section>
 
   <section id="tab-cup" class="panel table-panel" hidden>
@@ -286,6 +292,26 @@
       <p class="hint">ركلات الترجيح فقط عند التعادل.</p>
       <div class="err" id="koErr"></div>
       <div class="actions"><button class="btn primary" type="submit">حفظ</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>
+    </div>
+  </form>
+</div>
+
+<!-- مباراة (للمشرف) -->
+<div class="overlay" id="matchModal" role="dialog" aria-modal="true">
+  <form class="modal" id="matchForm" novalidate>
+    <div class="m-head"><h3 id="matchTitle"></h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body">
+      <datalist id="mTeams"></datalist>
+      <div class="grid2">
+        <div><label for="mA">الفريق الأول</label><input type="text" id="mA" maxlength="40" list="mTeams"></div>
+        <div><label for="mB">الفريق الثاني</label><input type="text" id="mB" maxlength="40" list="mTeams"></div>
+        <div><label for="mSa">أهداف الأول (بعد المباراة)</label><input type="number" id="mSa" min="0" max="99" inputmode="numeric"></div>
+        <div><label for="mSb">أهداف الثاني (بعد المباراة)</label><input type="number" id="mSb" min="0" max="99" inputmode="numeric"></div>
+      </div>
+      <label for="mAt">التاريخ والوقت</label><input type="datetime-local" id="mAt">
+      <label for="mNote">ملاحظة (اختياري، مثل: ربع النهائي)</label><input type="text" id="mNote" maxlength="40">
+      <div class="err" id="mErr"></div>
+      <div class="actions"><button class="btn primary" type="submit">حفظ</button><button class="btn ghost" type="button" id="mDel" hidden>حذف</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>
     </div>
   </form>
 </div>
