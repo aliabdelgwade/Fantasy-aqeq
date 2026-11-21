@@ -45,7 +45,7 @@ button{font:inherit;cursor:pointer}
 .stat span{font-size:12px;color:var(--muted)}
 .stat b.neg{color:#ff6b6b}
 .controls{display:grid;grid-template-columns:1fr 150px;gap:8px;margin:10px 0}
-input[type=text],input[type=email],input[type=password],input[type=number],input[type=search],select,textarea{
+input[type=text],input[type=datetime-local],input[type=email],input[type=password],input[type=number],input[type=search],select,textarea{
   width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:9px 12px;font:inherit;font-size:14px;transition:border .2s}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue)}
 textarea{min-height:70px;resize:vertical}
@@ -482,3 +482,26 @@ tr.clickable{cursor:pointer}
 .mt-when{border-inline-start:1px solid var(--line);padding-inline-start:12px;min-width:92px;display:flex;flex-direction:column;justify-content:center;text-align:center;font-size:13px;gap:2px}
 .mt-t{color:var(--muted);font-size:12px}.mt-rn{color:var(--yellow);font-size:11px}
 @media(max-width:560px){.tl.xl{width:56px;height:56px}.mt-fname{font-size:13px}.mt-fday,.mt-ftime{font-size:16px}.mt-when{min-width:78px}}
+
+/* نتيجة المباراة */
+.rs-top{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px}
+.linkbtn{background:none;border:0;color:var(--yellow);font:inherit;cursor:pointer;padding:0;text-decoration:underline}
+.rs-sec{margin-top:14px}
+.rs-team{display:flex;align-items:center;gap:8px;font-size:16px;margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--yellow)}
+.rs-card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;opacity:.6;transition:.15s}
+.rs-card.on{opacity:1;border-color:#3d6bd1}
+.rs-h{display:flex;align-items:center;gap:8px;cursor:pointer;margin:0}
+.rs-h input{width:20px;height:20px;accent-color:#2e7d32;flex:none;margin:0}
+.rs-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rs-played{font-size:12px;color:var(--muted)}
+.rs-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+.rs-f label{font-size:11px;margin:0 0 2px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+.rs-f input{padding:6px;text-align:center}
+.rs-pts{margin-top:6px;font-size:12px;font-weight:800;color:var(--yellow)}
+.actions.sticky{position:sticky;bottom:-16px;background:var(--panel);padding:10px 0;margin-bottom:-16px}
+.gv-row{display:flex;align-items:center;gap:10px;padding:8px;border-radius:10px}
+.gv-row:hover{background:rgba(255,255,255,.05)}.gv-mid{flex:1;min-width:0}
+.clickable{cursor:pointer}
+@media(max-width:560px){.rs-grid{grid-template-columns:repeat(3,1fr)}.rs-top{grid-template-columns:1fr 1fr}.rs-top>div:first-child{grid-column:1/-1}}
+input[type=datetime-local]{color-scheme:dark}
+#gRes{width:100%;margin-top:12px}
