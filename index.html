@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Aqeq League">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20261121h">
+<link rel="stylesheet" href="styles.css?v=20261121i">
 </head>
 <body>
 <header class="topbar">
@@ -357,6 +357,20 @@
   </form>
 </div>
 
+<!-- لاعب الجولة (للمشرف) -->
+<div class="overlay" id="potwModal" role="dialog" aria-modal="true">
+  <form class="modal" id="potwForm" novalidate>
+    <div class="m-head"><h3>⭐ لاعب الجولة</h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body">
+      <label for="pwGw">الجولة</label><select id="pwGw"></select>
+      <label for="pwPl">اللاعب (اللي لعبوا بالجولة فوق ومعهم نقاطهم)</label><select id="pwPl"></select>
+      <label for="pwNote">سبب الاختيار (اختياري)</label><input type="text" id="pwNote" maxlength="80" placeholder="مثال: هاتريك وصناعة هدف">
+      <div class="err" id="pwErr"></div>
+      <div class="actions"><button class="btn primary" type="submit">حفظ</button><button class="btn ghost" type="button" id="pwDel" hidden>إزالة</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>
+    </div>
+  </form>
+</div>
+
 <!-- سجل التعديلات -->
 <div class="overlay" id="logModal" role="dialog" aria-modal="true">
   <div class="modal">
@@ -442,6 +456,6 @@
 <div class="loading" id="loading"><div class="spin"></div><b>انتظر قليلًا، يتم تحميل بياناتك وفريقك…</b></div>
 
 <div class="toast" id="toast"></div>
-<script type="module" src="app.js?v=20261121h"></script>
+<script type="module" src="app.js?v=20261121i"></script>
 </body>
 </html>

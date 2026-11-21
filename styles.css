@@ -695,3 +695,7 @@ body.light .topbar,body.light .topbar .brand h1,body.light .topbar .brand p,body
 @media(max-width:560px){.hbtn{width:32px;height:32px;font-size:14px}.auth{gap:6px}.hbtns{gap:4px}}
 @media(max-width:560px){.topbar-in{flex-wrap:wrap;row-gap:8px}.auth{width:100%;justify-content:space-between}}
 .layout>*,.wrap>*{min-width:0}
+.potw{position:relative}.potw-note{font-size:12px;color:var(--yellow);margin-top:2px}
+.potw-ed{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.35);border:0;border-radius:8px;padding:2px 6px;color:#fff}
+#potw>.btn{margin-bottom:10px}
+body .potw.clickable{padding-inline-end:44px}

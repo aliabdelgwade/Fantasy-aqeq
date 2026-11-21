@@ -10,8 +10,8 @@ import {
 
 import {
   SC, num, breakdown, sumObj, matchPts, totalPts, roundMatches, roundPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
-} from './game.js?v=20261121h';
-import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261121h';
+} from './game.js?v=20261121i';
+import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261121i';
 
 // ---------- سجل التعديلات: كل حفظ أو حذف من المشرفين ينكتب في logs ----------
 const NO_LOG = /^(logs|leagues)\/|\/(picks|preds|votes|comments)\//;
@@ -1502,6 +1502,7 @@ playersReady = new Promise((r) => { playersLoaded = r; });
     (snap) => { S.matches = snap.docs.map((d) => ({ id: d.id, ...d.data() })); applyGold(); if (!$('#tab-matches').hidden) renderMatches(); if ($('#mvModal').classList.contains('open')) renderMatchView(); },
     () => {});
 
+  onSnapshot(doc(S.db, 'site', 'potw'), (s) => { S.potw = s.exists() ? s.data() : null; if (!$('#tab-table').hidden) renderPotw(); }, () => {});
   onSnapshot(doc(S.db, 'site', 'main'), (s) => { S.site = s.exists() ? s.data() : {}; renderAnn(); applyGold(); }, () => {});
 
   getRedirectResult(S.auth).catch((e) => toast(errText(e), true));
@@ -2145,26 +2146,57 @@ function applyGold() {
 }
 
 
-// ---------- لاعب الجولة ----------
+// ---------- لاعب الجولة (تختاره المشرفة) ----------
 function renderPotw() {
   const box = $('#potw'); box.innerHTML = '';
-  const now = Date.now();
-  const gs = [...S.gws].filter((g) => g.deadline <= now).sort((x, y) => y.n - x.n);
-  for (const g of gs) {
-    const ps = S.players.filter((p) => roundMatches(p, g.n).some((m) => num(m.min) > 0));
-    if (!ps.length) continue;
-    const best = ps.map((p) => ({ p, pts: roundPts(p, g.n) })).sort((x, y) => y.pts - x.pts || totalPts(y.p) - totalPts(x.p))[0];
-    const c = el('div', 'potw clickable');
-    const info = el('div', 'potw-i');
-    const ms = roundMatches(best.p, g.n);
-    const s = ms.reduce((t, m) => ({ g: t.g + num(m.g), a: t.a + num(m.a) }), { g: 0, a: 0 });
-    info.append(el('div', 'potw-h', `⭐ لاعب ${gwLabel(g)}`), el('div', 'potw-n', best.p.name), el('div', 'potw-c', `${best.p.club || ''} · ${POS[best.p.position].one}${s.g ? ` · ⚽ ${s.g}` : ''}${s.a ? ` · 👟 ${s.a}` : ''}`));
-    const pts = el('div', 'potw-p'); pts.append(el('b', null, String(best.pts)), el('span', null, 'نقطة'));
-    c.append(avatar(best.p, 'potw-av'), info, pts);
-    c.onclick = () => openProfile(best.p.id);
-    box.appendChild(c); return;
+  const pw = S.potw; const p = pw && pw.pid ? S.byId.get(pw.pid) : null;
+  if (!p) {
+    if (S.admin) { const b = el('button', 'btn ghost sm', '⭐ اختيار لاعب الجولة'); b.type = 'button'; b.onclick = openPotwForm; box.appendChild(b); }
+    return;
   }
+  const g = S.gws.find((x) => x.n === pw.n) || { n: pw.n };
+  const c = el('div', 'potw clickable');
+  const info = el('div', 'potw-i');
+  const ms = roundMatches(p, pw.n);
+  const st = ms.reduce((t, m) => ({ g: t.g + num(m.g), a: t.a + num(m.a) }), { g: 0, a: 0 });
+  info.append(el('div', 'potw-h', `⭐ لاعب ${gwLabel(g)}`), el('div', 'potw-n', p.name), el('div', 'potw-c', `${p.club || ''} · ${POS[p.position].one}${st.g ? ` · ⚽ ${st.g}` : ''}${st.a ? ` · 👟 ${st.a}` : ''}`));
+  if (pw.note) info.appendChild(el('div', 'potw-note', pw.note));
+  const pts = el('div', 'potw-p'); pts.append(el('b', null, String(roundPts(p, pw.n))), el('span', null, 'نقطة'));
+  c.append(avatar(p, 'potw-av'), info, pts);
+  c.onclick = () => openProfile(p.id);
+  if (S.admin) { const ed = el('button', 'potw-ed', '✏️'); ed.type = 'button'; ed.title = 'تغيير لاعب الجولة'; ed.onclick = (ev) => { ev.stopPropagation(); openPotwForm(); }; c.appendChild(ed); }
+  box.appendChild(c);
 }
+function potwPlayers() {
+  const n = Number($('#pwGw').value); const sel = $('#pwPl'); const cur = sel.value || (S.potw && S.potw.pid) || '';
+  sel.innerHTML = '';
+  S.players.map((p) => ({ p, pts: roundPts(p, n), pl: roundMatches(p, n).some((m) => num(m.min) > 0) }))
+    .sort((x, y) => (y.pl - x.pl) || y.pts - x.pts || x.p.name.localeCompare(y.p.name, 'ar'))
+    .forEach(({ p, pts, pl }) => { const o = document.createElement('option'); o.value = p.id; o.textContent = `${p.name} · ${p.club || ''}${pl ? ` · ${pts} نقطة` : ''}`; sel.appendChild(o); });
+  if (cur && S.byId.get(cur)) sel.value = cur;
+}
+function openPotwForm() {
+  if (!S.admin) return;
+  const sel = $('#pwGw'); sel.innerHTML = '';
+  const gs = [...S.gws].sort((x, y) => x.n - y.n);
+  gs.forEach((g) => { const o = document.createElement('option'); o.value = g.n; o.textContent = gwLabel(g); sel.appendChild(o); });
+  if (!gs.length) { const o = document.createElement('option'); o.value = 1; o.textContent = 'الجولة 1'; sel.appendChild(o); }
+  const past = gs.filter((g) => g.deadline <= Date.now());
+  sel.value = String(S.potw && S.potw.n ? S.potw.n : (past.length ? past[past.length - 1].n : (gs[0] ? gs[0].n : 1)));
+  $('#pwPl').value = ''; potwPlayers(); sel.onchange = potwPlayers;
+  $('#pwNote').value = (S.potw && S.potw.note) || '';
+  $('#pwDel').hidden = !(S.potw && S.potw.pid); $('#pwErr').textContent = '';
+  openModal('#potwModal');
+}
+$('#potwForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const pid = $('#pwPl').value; if (!pid) { $('#pwErr').textContent = 'اختاري اللاعب'; return; }
+  try { await setDoc(doc(S.db, 'site', 'potw'), { pid, n: Number($('#pwGw').value), note: $('#pwNote').value.trim().slice(0, 80), updatedAt: Date.now() }); closeModal('#potwModal'); toast('تم تحديد لاعب الجولة ⭐'); }
+  catch (er) { $('#pwErr').textContent = errText(er); }
+};
+$('#pwDel').onclick = async () => {
+  try { await deleteDoc(doc(S.db, 'site', 'potw')); closeModal('#potwModal'); toast('تم إزالة لاعب الجولة'); } catch (er) { $('#pwErr').textContent = errText(er); }
+};
 
 // ---------- الدوريات الخاصة ----------
 let stView = 'all', S_leagues = [], openLg = null;
