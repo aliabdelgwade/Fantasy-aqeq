@@ -10,8 +10,8 @@ import {
 
 import {
   SC, num, breakdown, sumObj, matchPts, totalPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
-} from './game.js?v=20261121e';
-import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261121e';
+} from './game.js?v=20261121f';
+import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261121f';
 
 const POS = {
   gk: { one: 'حارس', many: 'حراس', slot: 'حارس' },
@@ -2041,8 +2041,10 @@ async function openPredList(id) {
   if (!list.length) { box.appendChild(el('div', 'empty-msg', 'لا توجد توقعات بعد.')); return; }
   list.forEach((p) => {
     const k = kind(p); const r = el('div', 'pl-row ' + k + (p.uid === S.uid ? ' me' : ''));
-    const sc4 = el('div', 'pl-sc'); sc4.append(el('b', null, String(p.a)), el('span', null, '-'), el('b', null, String(p.b)));
-    r.append(el('div', 'pl-n', p.name + (p.uid === S.uid ? ' (أنت)' : '')), sc4, el('div', 'pl-k', k === 'exact' ? '🎯 توقع صحيح' : k === 'win' ? '✅ الفائز صح' : k === 'miss' ? '❌' : ''));
+    const top = el('div', 'pl-top'); top.append(el('div', 'pl-n', p.name + (p.uid === S.uid ? ' (أنت)' : '')), el('div', 'pl-k', k === 'exact' ? '🎯 توقع صحيح' : k === 'win' ? '✅ الفائز صح' : k === 'miss' ? '❌' : ''));
+    const tm = (n) => { const t = el('div', 'pl-tm'); t.append(tlogo(n, 'md', true), el('span', null, n)); return t; };
+    const sc4 = el('div', 'pl-sc'); sc4.append(tm(m.a), el('b', null, String(p.a)), el('span', 'pl-d', '-'), el('b', null, String(p.b)), tm(m.b));
+    r.append(top, sc4);
     box.appendChild(r);
   });
 }
