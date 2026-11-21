@@ -5,13 +5,36 @@ import {
   getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {
-  getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, onSnapshot, query, orderBy,
+  getFirestore, collection, doc, getDoc, getDocs, setDoc as fsSetDoc, deleteDoc as fsDeleteDoc, updateDoc, onSnapshot, query, orderBy, where, limit, arrayUnion, arrayRemove,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 import {
-  SC, num, breakdown, sumObj, matchPts, totalPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
-} from './game.js?v=20261121f';
-import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261121f';
+  SC, num, breakdown, sumObj, matchPts, totalPts, roundMatches, roundPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
+} from './game.js?v=20261121h';
+import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261121h';
+
+// ---------- سجل التعديلات: كل حفظ أو حذف من المشرفين ينكتب في logs ----------
+const NO_LOG = /^(logs|leagues)\/|\/(picks|preds|votes|comments)\//;
+function logLabel(path, data) {
+  const [c, id] = path.split('/');
+  const nm = (x) => (x && x.name) || '';
+  if (c === 'players') return 'لاعب: ' + (nm(data) || nm(S.byId && S.byId.get(id)) || id);
+  if (c === 'matches') { const m = data && data.a ? data : (S.matches || []).find((x) => x.id === id) || {}; return path.includes('/photos/') ? `صورة مباراة: ${m.a || ''} × ${m.b || ''}` : `مباراة: ${m.a || ''} × ${m.b || ''}`; }
+  if (c === 'clubs') return 'فريق: ' + (nm(data) || id);
+  if (c === 'cup') return 'البطولة';
+  if (c === 'gameweeks') return 'الجولة ' + id;
+  if (c === 'teams') return 'فريق فانتازي: ' + (nm(data) || nm(S.teams && S.teams.get(id)) || id);
+  if (c === 'site') return 'الإعلان وإعدادات الموقع';
+  return path;
+}
+function writeLog(act, path, data) {
+  if (!S.admin || NO_LOG.test(path) || !S.uid) return;
+  const u = S.auth && S.auth.currentUser;
+  fsSetDoc(doc(S.db, 'logs', Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
+    { uid: S.uid, by: ((u && (u.displayName || u.email)) || 'مشرف').slice(0, 60), act, path: path.slice(0, 200), label: logLabel(path, data).slice(0, 120), at: Date.now() }).catch(() => {});
+}
+async function setDoc(ref, data, opt) { const r = await (opt ? fsSetDoc(ref, data, opt) : fsSetDoc(ref, data)); writeLog('set', ref.path, data); return r; }
+async function deleteDoc(ref) { const lbl = ref.path; const r = await fsDeleteDoc(ref); writeLog('del', lbl, null); return r; }
 
 const POS = {
   gk: { one: 'حارس', many: 'حراس', slot: 'حارس' },
@@ -683,6 +706,9 @@ $('#search').oninput = (e) => { S.query = e.target.value; renderList(); };
 const fmtDate = (ms) => new Date(ms).toLocaleString('ar-SA-u-nu-latn', { dateStyle: 'medium', timeStyle: 'short' });
 const pname = (id) => S.byId.get(id)?.name || '—';
 async function renderStandings() {
+  renderPotw(); drawStTabs();
+  if (stView === 'leagues') { $('#standings').hidden = true; $('#leagues').hidden = false; renderLeagues(); return; }
+  $('#standings').hidden = false; $('#leagues').hidden = true;
   const box = $('#standings'); box.innerHTML = '';
   box.appendChild(el('div', 'empty-msg', 'جارٍ التحميل…'));
   let rows;
@@ -1049,7 +1075,7 @@ function openClub(name) {
   const tot = ps.reduce((t, p) => { const s = clubStat(p); t.pts += p.points; t.g += s.g; t.a += s.a; t.cs += s.cs; return t; }, { pts: 0, g: 0, a: 0, cs: 0 });
   const sum = el('div', 'club-sum'); sum.innerHTML = `<span>اللاعبون <b>${ps.length}</b></span><span>النقاط <b>${tot.pts}</b></span><span>الأهداف <b>${tot.g}</b></span><span>الحاسمة <b>${tot.a}</b></span><span>نظيفة <b>${tot.cs}</b></span>`;
   top.append(lg, sum); body.appendChild(top);
-  if (!ps.length) { body.appendChild(el('div', 'empty-msg', 'لا يوجد لاعبون في هذا الفريق بعد.')); openModal('#clubModal'); return; }
+  if (!ps.length) { body.appendChild(el('div', 'empty-msg', 'لا يوجد لاعبون في هذا الفريق بعد.')); clubExtras(body, name, ps); openModal('#clubModal'); return; }
   const t = el('table', 'club-t'); const h = el('tr');
   ['اللاعب', 'لعب', 'أهداف', 'حاسمة', 'نظيفة', '🟨', '🟥', 'نقاط'].forEach((x) => h.appendChild(el('th', null, x))); t.appendChild(h);
   ps.forEach((p) => {
@@ -1060,6 +1086,7 @@ function openClub(name) {
     t.appendChild(tr);
   });
   const wrap = el('div', 'club-tw'); wrap.appendChild(t); body.appendChild(wrap);
+  clubExtras(body, name, ps);
   openModal('#clubModal');
 }
 
@@ -1225,7 +1252,7 @@ function setAdmin(on) {
   S.admin = on;
   if (!$('#tab-cup').hidden) renderCup();
   if (!$('#tab-clubs').hidden) renderClubs();
-  $('#adminChip').hidden = !on; $('#addPlayer').hidden = !on; $('#gwAdmin').hidden = !on;
+  $('#adminChip').hidden = !on; $('#addPlayer').hidden = !on; $('#gwAdmin').hidden = !on; $('#annAdmin').hidden = !on; $('#logAdmin').hidden = !on;
   renderList();
   if (S.profile && $('#profileModal').classList.contains('open')) renderProfile();
 }
@@ -1472,8 +1499,10 @@ playersReady = new Promise((r) => { playersLoaded = r; });
     () => {});
 
   onSnapshot(collection(S.db, 'matches'),
-    (snap) => { S.matches = snap.docs.map((d) => ({ id: d.id, ...d.data() })); if (!$('#tab-matches').hidden) renderMatches(); if ($('#mvModal').classList.contains('open')) renderMatchView(); },
+    (snap) => { S.matches = snap.docs.map((d) => ({ id: d.id, ...d.data() })); applyGold(); if (!$('#tab-matches').hidden) renderMatches(); if ($('#mvModal').classList.contains('open')) renderMatchView(); },
     () => {});
+
+  onSnapshot(doc(S.db, 'site', 'main'), (s) => { S.site = s.exists() ? s.data() : {}; renderAnn(); applyGold(); }, () => {});
 
   getRedirectResult(S.auth).catch((e) => toast(errText(e), true));
   let welcomed = false;
@@ -1489,6 +1518,7 @@ playersReady = new Promise((r) => { playersLoaded = r; });
     } else welcomed = false;
     if (!$('#tab-table').hidden) renderStandings();
     if (!$('#tab-cup').hidden) renderCup();
+    if (u) checkJoinLink();
   });
 })();
 
@@ -1865,11 +1895,15 @@ function renderMatchView() {
   hd.appendChild(predButtons(m));
   if (S.admin) { const ed = el('div', 'mv-adm'); const b1 = el('button', 'btn primary sm', '📝 إدارة المباراة (التشكيلة والأحداث)'); b1.type = 'button'; b1.onclick = () => { closeModal('#mvModal'); openMatchEditor(m.id); }; const b2 = el('button', 'btn ghost sm', 'تعديل الفريقين والوقت'); b2.type = 'button'; b2.onclick = () => { closeModal('#mvModal'); openGameForm(m.id); }; ed.append(b1, b2); hd.appendChild(ed); }
   body.appendChild(hd);
-  if (!played) { body.appendChild(el('div', 'empty-msg', 'تظهر التشكيلة والتفاصيل قريبًا.')); return; }
   const tabs = el('div', 'pf-tabs mv-tabs');
-  [['events', 'الأحداث'], ['lineup', 'التشكيلة'], ['stats', 'الإحصائيات']].forEach(([k, l]) => { const b = el('button', 'pf-tab' + (mvTab === k ? ' active' : ''), l); b.type = 'button'; b.onclick = () => { mvTab = k; renderMatchView(); }; tabs.appendChild(b); });
+  [['events', 'الأحداث'], ['lineup', 'التشكيلة'], ['stats', 'الإحصائيات'], ['vote', '⭐ التصويت'], ['comments', '💬 التعليقات'], ['photos', '📷 الصور']].forEach(([k, l]) => { const b = el('button', 'pf-tab' + (mvTab === k ? ' active' : ''), l); b.type = 'button'; b.onclick = () => { mvTab = k; renderMatchView(); }; tabs.appendChild(b); });
   body.appendChild(tabs);
   const pane = el('div', 'mv-pane'); body.appendChild(pane);
+  if (mvTab !== 'comments') stopComments();
+  if (mvTab === 'vote') { mvVote(m, d, pane); return; }
+  if (mvTab === 'comments') { mvComments(m, pane); return; }
+  if (mvTab === 'photos') { mvPhotos(m, pane); return; }
+  if (!played) { pane.appendChild(el('div', 'empty-msg', 'تظهر التفاصيل قريبًا.')); return; }
   if (mvTab === 'events') mvEvents(m, d, pane); else if (mvTab === 'lineup') mvLineup(m, d, pane); else mvStats(m, d, pane);
 }
 function evPlayer(id, sub) {
@@ -2048,3 +2082,440 @@ async function openPredList(id) {
     box.appendChild(r);
   });
 }
+
+
+// ---------- الإعلانات ----------
+function renderAnn() {
+  const b = $('#annBar'); const t = (S.site && S.site.ann || '').trim();
+  let hid = ''; try { hid = localStorage.getItem('annHide') || ''; } catch (e) { /* */ }
+  b.hidden = !t || hid === String(S.site.annAt);
+  b.innerHTML = '';
+  if (!t) return;
+  const x = el('button', 'ann-x', '✕'); x.type = 'button'; x.title = 'إخفاء';
+  x.onclick = () => { try { localStorage.setItem('annHide', String(S.site.annAt)); } catch (e) { /* */ } b.hidden = true; };
+  b.append(el('span', 'ann-i', '📢'), el('span', 'ann-t', t), x);
+}
+$('#annAdmin').onclick = () => {
+  $('#annText').value = (S.site && S.site.ann) || '';
+  $('#annTheme').value = (S.site && S.site.theme) || 'auto';
+  $('#annErr').textContent = ''; openModal('#annModal');
+};
+async function saveSite(ann) {
+  const theme = $('#annTheme').value;
+  await setDoc(doc(S.db, 'site', 'main'), { ann: ann.slice(0, 300), annAt: Date.now(), theme, updatedAt: Date.now() });
+}
+$('#annForm').onsubmit = async (e) => {
+  e.preventDefault();
+  try { await saveSite($('#annText').value.trim()); closeModal('#annModal'); toast('تم نشر الإعلان'); } catch (er) { $('#annErr').textContent = errText(er); }
+};
+$('#annClear').onclick = async () => {
+  try { await saveSite(''); closeModal('#annModal'); toast('تم حذف الإعلان'); } catch (er) { $('#annErr').textContent = errText(er); }
+};
+
+// ---------- سجل التعديلات ----------
+$('#logAdmin').onclick = async () => {
+  const box = $('#logBody'); box.innerHTML = ''; box.appendChild(el('div', 'empty-msg', 'جاري التحميل…')); openModal('#logModal');
+  try {
+    const s = await getDocs(query(collection(S.db, 'logs'), orderBy('at', 'desc'), limit(150)));
+    box.innerHTML = '';
+    if (s.empty) { box.appendChild(el('div', 'empty-msg', 'لا توجد تعديلات مسجّلة بعد.')); return; }
+    let day = '';
+    s.docs.forEach((d) => {
+      const x = d.data(); const dy = relDay(x.at);
+      if (dy !== day) { day = dy; box.appendChild(el('div', 'log-day', dy)); }
+      const r = el('div', 'log-row ' + x.act);
+      r.append(el('span', 'log-ic', x.act === 'del' ? '🗑' : '✏️'), el('div', 'log-tx', `${x.by} ${x.act === 'del' ? 'حذف' : 'عدّل'} ${x.label}`), el('span', 'log-t', fmtTime(x.at)));
+      box.appendChild(r);
+    });
+  } catch (er) { box.innerHTML = ''; box.appendChild(el('div', 'err', errText(er))); }
+};
+
+// ---------- الوضع الفاتح والغامق ----------
+function applyTheme(t) { document.body.classList.toggle('light', t === 'light'); $('#themeBtn').textContent = t === 'light' ? '🌙' : '☀️'; $('#themeBtn').title = t === 'light' ? 'الوضع الغامق' : 'الوضع الفاتح'; }
+let curTheme = 'dark'; try { curTheme = localStorage.getItem('theme') || 'dark'; } catch (e) { /* */ }
+applyTheme(curTheme);
+$('#themeBtn').onclick = () => { curTheme = curTheme === 'light' ? 'dark' : 'light'; try { localStorage.setItem('theme', curTheme); } catch (e) { /* */ } applyTheme(curTheme); };
+
+// ---------- الخلفية الذهبية وقت النهائي ----------
+function applyGold() {
+  const mode = (S.site && S.site.theme) || 'auto';
+  let on = mode === 'gold';
+  if (mode === 'auto') on = (S.matches || []).some((m) => { const g = S.gws.find((x) => x.n === (m.round || gwOfTime(m.at))); return g && g.stage === 'final' && Math.abs(m.at - Date.now()) < 864e5 * 1.5 && (sameDay(m.at, Date.now()) || !isDone(m) || Date.now() - m.at < 864e5); });
+  document.body.classList.toggle('gold', on);
+}
+
+
+// ---------- لاعب الجولة ----------
+function renderPotw() {
+  const box = $('#potw'); box.innerHTML = '';
+  const now = Date.now();
+  const gs = [...S.gws].filter((g) => g.deadline <= now).sort((x, y) => y.n - x.n);
+  for (const g of gs) {
+    const ps = S.players.filter((p) => roundMatches(p, g.n).some((m) => num(m.min) > 0));
+    if (!ps.length) continue;
+    const best = ps.map((p) => ({ p, pts: roundPts(p, g.n) })).sort((x, y) => y.pts - x.pts || totalPts(y.p) - totalPts(x.p))[0];
+    const c = el('div', 'potw clickable');
+    const info = el('div', 'potw-i');
+    const ms = roundMatches(best.p, g.n);
+    const s = ms.reduce((t, m) => ({ g: t.g + num(m.g), a: t.a + num(m.a) }), { g: 0, a: 0 });
+    info.append(el('div', 'potw-h', `⭐ لاعب ${gwLabel(g)}`), el('div', 'potw-n', best.p.name), el('div', 'potw-c', `${best.p.club || ''} · ${POS[best.p.position].one}${s.g ? ` · ⚽ ${s.g}` : ''}${s.a ? ` · 👟 ${s.a}` : ''}`));
+    const pts = el('div', 'potw-p'); pts.append(el('b', null, String(best.pts)), el('span', null, 'نقطة'));
+    c.append(avatar(best.p, 'potw-av'), info, pts);
+    c.onclick = () => openProfile(best.p.id);
+    box.appendChild(c); return;
+  }
+}
+
+// ---------- الدوريات الخاصة ----------
+let stView = 'all', S_leagues = [], openLg = null;
+function drawStTabs() {
+  const t = $('#stTabs'); t.innerHTML = '';
+  [['all', 'الدوري العام'], ['leagues', '🏅 دورياتي']].forEach(([k, l]) => { const b = el('button', 'pf-tab' + (stView === k ? ' active' : ''), l); b.type = 'button'; b.onclick = () => { stView = k; openLg = null; renderStandings(); }; t.appendChild(b); });
+}
+const genCode = () => { const ch = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 6; i++) s += ch[Math.floor(Math.random() * ch.length)]; return s; };
+const joinUrl = (code) => location.origin + location.pathname + '?join=' + code;
+const myName = () => { const u = S.auth.currentUser; const t = S.teams.get(S.uid); return ((t && t.name) || (u && u.displayName) || 'لاعب').slice(0, 60); };
+async function renderLeagues() {
+  const box = $('#leagues'); box.innerHTML = '';
+  if (!S.uid) { box.appendChild(el('div', 'empty-msg', 'سجّل دخول بقوقل عشان تسوي دوري خاص أو تنضم لدوري أصحابك.')); const b = el('button', 'btn primary', 'تسجيل الدخول'); b.onclick = googleLogin; box.appendChild(b); return; }
+  if (openLg) { renderLeague(box, openLg); return; }
+  const tools = el('div', 'lg-tools');
+  const nb = el('button', 'btn primary sm', '+ إنشاء دوري'); nb.type = 'button'; nb.onclick = createLeague;
+  const ji = el('input'); ji.type = 'text'; ji.placeholder = 'رمز الدوري'; ji.maxLength = 6; ji.className = 'lg-code-in';
+  const jb = el('button', 'btn ghost sm', 'انضمام'); jb.type = 'button'; jb.onclick = () => joinLeague(ji.value.trim().toUpperCase());
+  tools.append(nb, ji, jb); box.appendChild(tools);
+  const list = el('div', 'lg-list'); list.appendChild(el('div', 'empty-msg', 'جاري التحميل…')); box.appendChild(list);
+  try {
+    const s = await getDocs(query(collection(S.db, 'leagues'), where('members', 'array-contains', S.uid)));
+    S_leagues = s.docs.map((d) => ({ id: d.id, ...d.data() })).sort((x, y) => x.createdAt - y.createdAt);
+  } catch (e) { list.innerHTML = ''; list.appendChild(el('div', 'err', errText(e))); return; }
+  list.innerHTML = '';
+  if (!S_leagues.length) { list.appendChild(el('div', 'empty-msg', 'ما عندك دوريات بعد. سوّ دوري وأرسل الرابط لأصحابك، أو اكتب رمز دوري وانضم.')); return; }
+  S_leagues.forEach((L) => {
+    const c = el('div', 'lg-card clickable');
+    c.append(el('div', 'lg-n', L.name), el('div', 'lg-m', `${L.members.length} مشارك${L.owner === S.uid ? ' · 👑 أنت المالك' : ''}`));
+    c.onclick = () => { openLg = L.id; renderLeagues(); };
+    list.appendChild(c);
+  });
+}
+async function createLeague() {
+  const name = (prompt('اسم الدوري الخاص:') || '').trim().slice(0, 40);
+  if (!name) return;
+  try {
+    let code = genCode();
+    for (let i = 0; i < 5; i++) { const x = await getDoc(doc(S.db, 'leagues', code)); if (!x.exists()) break; code = genCode(); }
+    await fsSetDoc(doc(S.db, 'leagues', code), { name, owner: S.uid, ownerName: myName(), members: [S.uid], createdAt: Date.now() });
+    toast('تم إنشاء الدوري ✅'); openLg = code; renderLeagues();
+  } catch (e) { toast(errText(e), true); }
+}
+async function joinLeague(code) {
+  if (!S.uid) { toast('سجّل دخول أولًا'); googleLogin(); return; }
+  if (!/^[A-Z0-9]{6}$/.test(code)) { toast('الرمز لازم يكون 6 حروف/أرقام', true); return; }
+  try {
+    const s = await getDoc(doc(S.db, 'leagues', code));
+    if (!s.exists()) { toast('ما فيه دوري بهذا الرمز', true); return; }
+    const L = s.data();
+    if (!L.members.includes(S.uid)) await updateDoc(doc(S.db, 'leagues', code), { members: arrayUnion(S.uid) });
+    toast(`انضممت لدوري «${L.name}» ✅`);
+    stView = 'leagues'; openLg = code;
+    document.querySelector('.tab[data-tab=table]').click();
+  } catch (e) { toast(errText(e), true); }
+}
+let joinChecked = false;
+function checkJoinLink() {
+  if (joinChecked) return; const code = new URLSearchParams(location.search).get('join'); if (!code) return;
+  joinChecked = true;
+  history.replaceState(null, '', location.pathname);
+  joinLeague(code.toUpperCase());
+}
+async function renderLeague(box, id) {
+  box.innerHTML = '';
+  const back = el('button', 'btn ghost sm', '→ رجوع لدورياتي'); back.type = 'button'; back.onclick = () => { openLg = null; renderLeagues(); }; box.appendChild(back);
+  let L;
+  try { const s = await getDoc(doc(S.db, 'leagues', id)); if (!s.exists()) { openLg = null; renderLeagues(); return; } L = { id, ...s.data() }; await loadPicks(); }
+  catch (e) { box.appendChild(el('div', 'err', errText(e))); return; }
+  const own = L.owner === S.uid;
+  const hd = el('div', 'lg-head');
+  hd.append(el('h3', null, '🏅 ' + L.name), el('div', 'lg-m', `المالك: ${L.ownerName || ''} · ${L.members.length} مشارك`));
+  const codeBox = el('div', 'lg-codebox');
+  codeBox.append(el('span', null, 'رمز الدخول:'), el('b', 'lg-code', L.id));
+  const cp = el('button', 'btn ghost sm', '🔗 نسخ رابط الدعوة'); cp.type = 'button';
+  cp.onclick = async () => { const u = joinUrl(L.id); try { if (navigator.share) await navigator.share({ title: L.name, text: `انضم لدوري «${L.name}» في Aqeq League`, url: u }); else { await navigator.clipboard.writeText(u); toast('تم نسخ الرابط'); } } catch (e) { try { await navigator.clipboard.writeText(u); toast('تم نسخ الرابط'); } catch (e2) { prompt('انسخ الرابط:', u); } } };
+  codeBox.appendChild(cp); hd.appendChild(codeBox); box.appendChild(hd);
+  const now = Date.now();
+  const rows = L.members.map((uid) => { const t = S.teams.get(uid); return { uid, t, tt: t ? teamTotals(S.gws, S.allPicks[uid] || {}, S.byId, S.rules.formations, now) : { total: 0, perGw: {} } }; })
+    .sort((x, y) => y.tt.total - x.tt.total);
+  const tbl = el('table'); const h = el('tr'); ['#', 'الفريق', 'المجموع', ''].forEach((x) => h.appendChild(el('th', null, x))); tbl.appendChild(h);
+  rows.forEach((r, i) => {
+    const tr = el('tr', (r.uid === S.uid ? 'mine ' : '') + (r.t ? 'clickable' : ''));
+    const nm = r.t ? r.t.name : '(لم يحفظ فريق بعد)';
+    tr.append(el('td', 'rank', i === 0 && r.tt.total > 0 ? '🏆' : String(i + 1)), el('td', null, nm + (r.uid === L.owner ? ' 👑' : '') + (r.uid === S.uid ? ' (أنت)' : '')), el('td', 'pts', String(r.tt.total)));
+    const td = el('td');
+    if (own && r.uid !== S.uid) {
+      const d = el('button', 'del-team', 'إزالة'); let armed = false;
+      d.onclick = async (ev) => { ev.stopPropagation(); if (!armed) { armed = true; d.textContent = 'تأكيد؟'; return; } try { await updateDoc(doc(S.db, 'leagues', L.id), { members: arrayRemove(r.uid) }); renderLeague(box, id); } catch (e) { toast(errText(e), true); } };
+      td.appendChild(d);
+    }
+    tr.appendChild(td);
+    if (r.t) { const ns = Object.keys(r.tt.perGw).map(Number); const last = ns.length ? r.tt.perGw[Math.max(...ns)] : null; tr.onclick = () => openTeamModal({ uid: r.uid, t: r.t, tt: r.tt, last }); }
+    tbl.appendChild(tr);
+  });
+  box.appendChild(tbl);
+  const act = el('div', 'actions');
+  if (own) {
+    const rn = el('button', 'btn ghost sm', '✏️ تغيير الاسم'); rn.type = 'button';
+    rn.onclick = async () => { const n = (prompt('الاسم الجديد:', L.name) || '').trim().slice(0, 40); if (!n) return; try { await updateDoc(doc(S.db, 'leagues', L.id), { name: n }); renderLeague(box, id); } catch (e) { toast(errText(e), true); } };
+    const del = el('button', 'btn ghost sm', '🗑 حذف الدوري'); del.type = 'button'; let armed = false;
+    del.onclick = async () => { if (!armed) { armed = true; del.textContent = 'تأكيد الحذف؟'; return; } try { await fsDeleteDoc(doc(S.db, 'leagues', L.id)); openLg = null; renderLeagues(); toast('تم حذف الدوري'); } catch (e) { toast(errText(e), true); } };
+    act.append(rn, del);
+  } else {
+    const lv = el('button', 'btn ghost sm', 'مغادرة الدوري'); lv.type = 'button'; let armed = false;
+    lv.onclick = async () => { if (!armed) { armed = true; lv.textContent = 'تأكيد المغادرة؟'; return; } try { await updateDoc(doc(S.db, 'leagues', L.id), { members: arrayRemove(S.uid) }); openLg = null; renderLeagues(); } catch (e) { toast(errText(e), true); } };
+    act.appendChild(lv);
+  }
+  box.appendChild(act);
+}
+
+
+// ---------- مشاركة التشكيلة كصورة ----------
+const loadImg = (src) => new Promise((res) => { if (!src) return res(null); const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+function rrect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+async function shareLineup() {
+  const st = ORDER.flatMap((k) => S.slots[k]).filter(Boolean);
+  if (!st.length) { toast('اختر لاعبينك أولًا', true); return; }
+  toast('جاري تجهيز الصورة…');
+  try { await document.fonts.ready; } catch (e) { /* */ }
+  const W = 1080, H = 1350, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const c = cv.getContext('2d');
+  const F = (s, w) => `${w || 800} ${s}px Cairo, system-ui, sans-serif`;
+  const g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#0b1a33'); g.addColorStop(1, '#1f4e86'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+  c.direction = 'rtl'; c.textAlign = 'center';
+  const logo = await loadImg('logo.webp');
+  if (logo) { c.save(); c.beginPath(); c.arc(W - 110, 95, 55, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill(); c.clip(); c.drawImage(logo, W - 165, 40, 110, 110); c.restore(); }
+  c.fillStyle = '#f4c430'; c.font = F(30, 900); c.textAlign = 'right'; c.fillText('Aqeq League', W - 185, 80);
+  c.fillStyle = '#fff'; c.font = F(54, 900); c.fillText(($('#teamName').value || 'فريقي').slice(0, 24), W - 185, 145);
+  c.textAlign = 'left'; c.font = F(30, 700); c.fillStyle = '#c9d6ee';
+  c.fillText(S.openGw ? gwLabel(S.openGw) : '', 60, 110);
+  // الملعب
+  const px = 50, py = 200, pw = W - 100, ph = 880;
+  c.save(); rrect(c, px, py, pw, ph, 30); c.clip();
+  for (let i = 0; i < 10; i++) { c.fillStyle = i % 2 ? '#2e8b3e' : '#287f37'; c.fillRect(px, py + (ph / 10) * i, pw, ph / 10 + 1); }
+  c.strokeStyle = 'rgba(255,255,255,.35)'; c.lineWidth = 4;
+  c.strokeRect(px + pw * 0.28, py + ph - 150, pw * 0.44, 150); c.beginPath(); c.arc(W / 2, py, 110, 0, Math.PI); c.stroke();
+  c.restore();
+  const drawP = async (id, x, y, sz) => {
+    const p = S.byId.get(id); if (!p) return;
+    const img = await loadImg(photoUrl(p));
+    c.save(); rrect(c, x - sz / 2, y - sz / 2, sz, sz, sz * 0.22); c.fillStyle = '#dfe7f5'; c.fill(); c.clip();
+    if (img) { const s = Math.max(sz / img.width, sz / img.height); c.drawImage(img, x - (img.width * s) / 2, y - (img.height * s) / 2, img.width * s, img.height * s); }
+    else { c.fillStyle = '#1d2f5d'; c.font = F(sz * 0.45, 900); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(initialOf(p.name), x, y); c.textBaseline = 'alphabetic'; }
+    c.restore();
+    const nm = p.name.length > 14 ? p.name.slice(0, 13) + '…' : p.name;
+    c.font = F(26, 800); const tw = Math.max(c.measureText(nm).width + 30, sz);
+    c.fillStyle = '#fff'; rrect(c, x - tw / 2, y + sz / 2 + 8, tw, 44, 10); c.fill();
+    c.fillStyle = '#14213a'; c.textAlign = 'center'; c.fillText(nm, x, y + sz / 2 + 40);
+    c.fillStyle = '#1f4e86'; rrect(c, x - tw / 2, y + sz / 2 + 52, tw, 30, 8); c.fill();
+    c.fillStyle = '#fff'; c.font = F(19, 700); c.fillText(`${p.club || ''}`.slice(0, 18), x, y + sz / 2 + 74);
+    const badge = S.captain === id ? 'C' : S.vice === id ? 'V' : '';
+    if (badge) { c.beginPath(); c.arc(x + sz / 2 - 6, y - sz / 2 + 6, 24, 0, Math.PI * 2); c.fillStyle = badge === 'C' ? '#f4c430' : '#fff'; c.fill(); c.fillStyle = '#14213a'; c.font = F(26, 900); c.fillText(badge, x + sz / 2 - 6, y - sz / 2 + 15); }
+  };
+  const rows = ['fwd', 'mid', 'def', 'gk'].map((k) => S.slots[k].filter(Boolean)).filter((r) => r.length);
+  const gap = ph / rows.length, sz = rows.length > 3 ? 112 : 130;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i]; const y = py + gap * (i + 0.5) - 34;
+    for (let j = 0; j < r.length; j++) await drawP(r[j], px + (pw / (r.length + 1)) * (r.length - j), y, sz);
+  }
+  // البديل
+  c.fillStyle = 'rgba(255,255,255,.08)'; rrect(c, px, py + ph + 25, pw, 200, 24); c.fill();
+  c.fillStyle = '#c9d6ee'; c.font = F(26, 800); c.textAlign = 'right'; c.fillText('الاحتياط', W - 80, py + ph + 70);
+  const bn = S.bench.filter(Boolean);
+  for (let j = 0; j < bn.length; j++) await drawP(bn[j], W / 2 - j * 200, py + ph + 80, 86);
+  c.fillStyle = '#8a9ab5'; c.font = F(24, 700); c.textAlign = 'center'; c.direction = 'ltr'; c.fillText(location.host + location.pathname.replace(/index\.html$/, ''), W / 2, H - 30);
+  const blob = await new Promise((res) => cv.toBlob(res, 'image/png'));
+  const file = new File([blob], 'aqeq-lineup.png', { type: 'image/png' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'تشكيلتي في Aqeq League' }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  const u = URL.createObjectURL(blob); const a2 = document.createElement('a'); a2.href = u; a2.download = 'aqeq-lineup.png'; document.body.appendChild(a2); a2.click(); a2.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000);
+  toast('تم تنزيل صورة التشكيلة ✅');
+}
+$('#shareTeam').onclick = shareLineup;
+
+
+// صفحة الفريق: سجل النتائج والمباريات والهدافون
+function clubExtras(body, name, ps) {
+  const ms = (S.matches || []).filter((m) => m.a === name || m.b === name).sort((x, y) => x.at - y.at);
+  const done = ms.filter(isDone);
+  const rec = { w: 0, d: 0, l: 0, gf: 0, ga: 0 };
+  done.forEach((m) => { const me = m.a === name ? m.sa : m.sb, op = m.a === name ? m.sb : m.sa; rec.gf += me; rec.ga += op; if (me > op) rec.w++; else if (me < op) rec.l++; else rec.d++; });
+  body.appendChild(el('h3', 'mt-h', '📊 سجل الفريق'));
+  const rb = el('div', 'club-rec');
+  [['لعب', done.length], ['فوز', rec.w], ['تعادل', rec.d], ['خسارة', rec.l], ['له', rec.gf], ['عليه', rec.ga]].forEach(([l, v]) => { const c = el('div'); c.append(el('b', null, String(v)), el('span', null, l)); rb.appendChild(c); });
+  body.appendChild(rb);
+  const form = el('div', 'club-form');
+  done.slice(-5).forEach((m) => { const me = m.a === name ? m.sa : m.sb, op = m.a === name ? m.sb : m.sa; form.appendChild(el('span', me > op ? 'w' : me < op ? 'l' : 'd', me > op ? 'ف' : me < op ? 'خ' : 'ت')); });
+  if (done.length) { const fw = el('div', 'club-formw'); fw.append(el('span', null, 'آخر النتائج:'), form); body.appendChild(fw); }
+  body.appendChild(el('h3', 'mt-h', '📅 المباريات والنتائج'));
+  if (!ms.length) body.appendChild(el('div', 'empty-msg', 'لا توجد مباريات بعد.'));
+  else {
+    const g = el('div', 'mt-list');
+    ms.forEach((m) => { const rw = matchRow(m); rw.onclick = () => { closeModal('#clubModal'); openMatchView(m.id); }; g.appendChild(rw); });
+    body.appendChild(g);
+  }
+  const sc = ps.map((p) => ({ p, s: clubStat(p) })).filter((x) => x.s.g > 0 || x.s.a > 0).sort((x, y) => y.s.g - x.s.g || y.s.a - x.s.a);
+  body.appendChild(el('h3', 'mt-h', '⚽ الهدافون'));
+  if (!sc.length) body.appendChild(el('div', 'empty-msg', 'لا توجد أهداف بعد.'));
+  sc.forEach(({ p, s }, i) => {
+    const rw = el('div', 'club-sc clickable');
+    rw.append(el('span', 'club-sc-r', String(i + 1)), avatar(p, 'club-av'), el('b', 'club-sc-n', p.name), el('span', 'club-sc-v', `⚽ ${s.g}`), el('span', 'club-sc-v a', `👟 ${s.a}`));
+    rw.onclick = () => { closeModal('#clubModal'); openProfile(p.id); };
+    body.appendChild(rw);
+  });
+}
+
+
+// ---------- تصويت أفضل لاعب في المباراة ----------
+const VT = {};
+async function mvVote(m, d, pane) {
+  if (!isDone(m)) { pane.appendChild(el('div', 'empty-msg', 'التصويت لأفضل لاعب يفتح بعد نهاية المباراة.')); return; }
+  const cands = Object.entries(d.pl).filter(([id, x]) => x.played && S.byId.get(id)).map(([id, x]) => ({ id, x, p: S.byId.get(id) }));
+  if (!cands.length) { pane.appendChild(el('div', 'empty-msg', 'لم تُسجَّل تشكيلة المباراة.')); return; }
+  if (!VT[m.id]) {
+    pane.appendChild(el('div', 'empty-msg', 'جاري التحميل…'));
+    try { const s = await getDocs(collection(S.db, 'matches', m.id, 'votes')); VT[m.id] = s.docs.map((x) => ({ uid: x.id, ...x.data() })); }
+    catch (e) { pane.innerHTML = ''; pane.appendChild(el('div', 'err', errText(e))); return; }
+    if (mvTab === 'vote' && mvId === m.id) renderMatchView(); return;
+  }
+  const votes = VT[m.id]; const mine = (votes.find((v) => v.uid === S.uid) || {}).pid;
+  const cnt = {}; votes.forEach((v) => { cnt[v.pid] = (cnt[v.pid] || 0) + 1; });
+  pane.appendChild(el('p', 'hint', S.uid ? (mine ? 'صوّتّ، تقدر تغيّر صوتك بالضغط على لاعب ثاني.' : 'اختر أفضل لاعب في المباراة.') : 'سجّل دخول بقوقل عشان تصوّت.'));
+  pane.appendChild(el('div', 'vt-total', `عدد الأصوات: ${votes.length}`));
+  cands.sort((x, y) => (cnt[y.id] || 0) - (cnt[x.id] || 0) || (x.x.side === 'a' ? -1 : 1));
+  cands.forEach(({ id, x, p }) => {
+    const n = cnt[id] || 0; const pc = votes.length ? Math.round((n / votes.length) * 100) : 0;
+    const r = el('div', 'vt-row clickable' + (mine === id ? ' me' : ''));
+    const bar = el('div', 'vt-bar'); bar.style.width = pc + '%';
+    const tx = el('div', 'vt-tx'); tx.append(el('b', null, p.name), el('span', 'ev-ps', `${p.club} · ${POS[p.position].one}`));
+    r.append(bar, avatar(p, 'club-av'), tx, el('div', 'vt-pc', `${pc}% (${n})`));
+    r.onclick = async () => {
+      if (!S.uid) { googleLogin(); return; }
+      try { await fsSetDoc(doc(S.db, 'matches', m.id, 'votes', S.uid), { pid: id, at: Date.now() }); VT[m.id] = votes.filter((v) => v.uid !== S.uid).concat([{ uid: S.uid, pid: id }]); toast('تم تسجيل صوتك ✅'); renderMatchView(); }
+      catch (e) { toast(errText(e), true); }
+    };
+    pane.appendChild(r);
+  });
+}
+
+// ---------- التعليقات ----------
+const CM = {}; let cmUnsub = null, cmFor = null, cmDraft = '', cmReply = null;
+function stopComments() { if (cmUnsub) { cmUnsub(); cmUnsub = null; cmFor = null; } }
+function mvComments(m, pane) {
+  if (cmFor !== m.id) {
+    stopComments(); cmFor = m.id;
+    cmUnsub = onSnapshot(collection(S.db, 'matches', m.id, 'comments'), (s) => { CM[m.id] = s.docs.map((x) => ({ id: x.id, ...x.data() })); if (mvTab === 'comments' && mvId === m.id && $('#mvModal').classList.contains('open') && !document.activeElement?.closest?.('.cm-form')) renderMatchView(); }, (e) => toast(errText(e), true));
+  }
+  const all = CM[m.id];
+  const form = el('div', 'cm-form');
+  if (S.uid) {
+    if (cmReply) { const rp = (all || []).find((c) => c.id === cmReply); const rb = el('div', 'cm-replying'); const x = el('button', 'pf-edit', '✕'); x.type = 'button'; x.onclick = () => { cmReply = null; renderMatchView(); }; rb.append(el('span', null, `رد على ${rp ? rp.name : ''}`), x); form.appendChild(rb); }
+    const ta = el('textarea'); ta.maxLength = 300; ta.rows = 2; ta.placeholder = cmReply ? 'اكتب ردك…' : 'اكتب تعليقك على المباراة…'; ta.value = cmDraft; ta.oninput = () => { cmDraft = ta.value; };
+    const sb = el('button', 'btn primary sm', 'نشر'); sb.type = 'button';
+    sb.onclick = async () => {
+      const t = ta.value.trim(); if (!t) return; sb.disabled = true;
+      try { await fsSetDoc(doc(collection(S.db, 'matches', m.id, 'comments')), { uid: S.uid, name: myName(), text: t.slice(0, 300), at: Date.now(), parent: cmReply || null, likes: [] }); cmDraft = ''; cmReply = null; ta.blur(); renderMatchView(); }
+      catch (e) { sb.disabled = false; toast(errText(e), true); }
+    };
+    form.append(ta, sb);
+  } else { const b = el('button', 'btn ghost sm', 'سجّل دخول عشان تعلّق'); b.type = 'button'; b.onclick = googleLogin; form.appendChild(b); }
+  pane.appendChild(form);
+  if (!all) { pane.appendChild(el('div', 'empty-msg', 'جاري التحميل…')); return; }
+  const tops = all.filter((c) => !c.parent).sort((x, y) => y.at - x.at);
+  if (!tops.length) pane.appendChild(el('div', 'empty-msg', 'لا توجد تعليقات بعد. كن أول من يعلّق!'));
+  const card = (c, isReply) => {
+    const w = el('div', 'cm' + (isReply ? ' reply' : '') + (c.uid === S.uid ? ' mine' : ''));
+    const hd = el('div', 'cm-h'); hd.append(el('b', null, c.name), el('span', 'cm-t', `${relDay(c.at)} ${fmtTime(c.at)}`));
+    const tx = el('div', 'cm-tx', c.text);
+    const ac = el('div', 'cm-ac');
+    const liked = S.uid && (c.likes || []).includes(S.uid);
+    const lk = el('button', 'cm-btn' + (liked ? ' on' : ''), `${liked ? '❤️' : '🤍'} ${(c.likes || []).length || ''}`); lk.type = 'button';
+    lk.onclick = async () => { if (!S.uid) { googleLogin(); return; } try { await updateDoc(doc(S.db, 'matches', m.id, 'comments', c.id), { likes: liked ? arrayRemove(S.uid) : arrayUnion(S.uid) }); } catch (e) { toast(errText(e), true); } };
+    ac.appendChild(lk);
+    if (!isReply) { const rp = el('button', 'cm-btn', '↩ رد'); rp.type = 'button'; rp.onclick = () => { if (!S.uid) { googleLogin(); return; } cmReply = c.id; renderMatchView(); const t = document.querySelector('.cm-form textarea'); if (t) t.focus(); }; ac.appendChild(rp); }
+    if (S.uid && (c.uid === S.uid || S.admin)) {
+      const dl = el('button', 'cm-btn del', '🗑 حذف'); dl.type = 'button'; let armed = false;
+      dl.onclick = async () => {
+        if (!armed) { armed = true; dl.textContent = 'تأكيد؟'; return; }
+        try { if (S.admin && !isReply) for (const rr of all.filter((x) => x.parent === c.id)) await fsDeleteDoc(doc(S.db, 'matches', m.id, 'comments', rr.id)); await fsDeleteDoc(doc(S.db, 'matches', m.id, 'comments', c.id)); }
+        catch (e) { toast(errText(e), true); }
+      };
+      ac.appendChild(dl);
+    }
+    w.append(hd, tx, ac); return w;
+  };
+  tops.forEach((c) => {
+    pane.appendChild(card(c, false));
+    all.filter((x) => x.parent === c.id).sort((x, y) => x.at - y.at).forEach((rr) => pane.appendChild(card(rr, true)));
+  });
+}
+
+// ---------- ألبوم صور المباراة ----------
+const PH = {};
+function resizePhoto(file) {
+  return new Promise((res, rej) => {
+    const r0 = new FileReader(); r0.onerror = rej;
+    r0.onload = () => { const img = new Image(); img.onerror = () => rej(new Error('صورة غير صالحة')); img.onload = () => {
+      let q = 0.82, max = 1280, out;
+      for (let k = 0; k < 6; k++) { const s = Math.min(1, max / Math.max(img.width, img.height)); const cv = document.createElement('canvas'); cv.width = Math.round(img.width * s); cv.height = Math.round(img.height * s); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); out = cv.toDataURL('image/jpeg', q); if (out.length < 700000) break; q -= 0.1; max = Math.round(max * 0.85); }
+      res(out);
+    }; img.src = r0.result; };
+    r0.readAsDataURL(file);
+  });
+}
+async function mvPhotos(m, pane) {
+  if (S.admin) {
+    const inp = el('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true; inp.hidden = true;
+    const b = el('button', 'btn primary sm', '+ إضافة صور'); b.type = 'button'; b.onclick = () => inp.click();
+    inp.onchange = async () => {
+      const fs = [...inp.files]; if (!fs.length) return; b.disabled = true; b.textContent = 'جاري الرفع…';
+      try { for (const f of fs) { const src = await resizePhoto(f); await setDoc(doc(collection(S.db, 'matches', m.id, 'photos')), { src, at: Date.now() }); } delete PH[m.id]; toast('تم رفع الصور ✅'); }
+      catch (e) { toast(errText(e), true); }
+      renderMatchView();
+    };
+    pane.append(b, inp);
+  }
+  if (!PH[m.id]) {
+    const ld = el('div', 'empty-msg', 'جاري التحميل…'); pane.appendChild(ld);
+    try { const s = await getDocs(collection(S.db, 'matches', m.id, 'photos')); PH[m.id] = s.docs.map((x) => ({ id: x.id, ...x.data() })).sort((x, y) => x.at - y.at); }
+    catch (e) { ld.textContent = errText(e); return; }
+    if (mvTab === 'photos' && mvId === m.id) renderMatchView(); return;
+  }
+  const ps = PH[m.id];
+  if (!ps.length) { pane.appendChild(el('div', 'empty-msg', 'لا توجد صور لهذه المباراة بعد.')); return; }
+  const g = el('div', 'ph-grid');
+  ps.forEach((p, i) => {
+    const c = el('div', 'ph clickable'); const im = new Image(); im.src = p.src; im.alt = ''; im.loading = 'lazy'; c.appendChild(im);
+    c.onclick = () => openPhoto(m.id, i);
+    if (S.admin) { const d = el('button', 'ph-del', '🗑'); d.type = 'button'; let armed = false; d.onclick = async (e) => { e.stopPropagation(); if (!armed) { armed = true; d.textContent = 'تأكيد؟'; return; } try { await deleteDoc(doc(S.db, 'matches', m.id, 'photos', p.id)); PH[m.id] = ps.filter((x) => x.id !== p.id); renderMatchView(); } catch (er) { toast(errText(er), true); } }; c.appendChild(d); }
+    g.appendChild(c);
+  });
+  pane.appendChild(g);
+}
+let phView = null;
+function openPhoto(mid, i) { phView = { mid, i }; drawPhoto(); openModal('#photoModal'); }
+function drawPhoto() { const ps = PH[phView.mid] || []; if (!ps.length) return; phView.i = (phView.i + ps.length) % ps.length; $('#phImg').src = ps[phView.i].src; $('#phCount').textContent = `${phView.i + 1} / ${ps.length}`; }
+$('#phPrev').onclick = () => { phView.i++; drawPhoto(); };
+$('#phNext').onclick = () => { phView.i--; drawPhoto(); };
+
+
+// ---------- التطبيق على الجوال (PWA) ----------
+let swReg = null, installEvt = null;
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').then((r) => { swReg = r; }).catch(() => {});
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; $('#installBtn').hidden = false; });
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+if (!isStandalone() && /iphone|ipad|ipod/i.test(navigator.userAgent)) $('#installBtn').hidden = false;
+$('#installBtn').onclick = async () => {
+  if (installEvt) { installEvt.prompt(); const r = await installEvt.userChoice.catch(() => null); if (r && r.outcome === 'accepted') { $('#installBtn').hidden = true; toast('تم تثبيت التطبيق ✅'); } installEvt = null; return; }
+  $('#iosHelp').hidden = false; openModal('#installModal');
+};
+window.addEventListener('appinstalled', () => { $('#installBtn').hidden = true; });
+
+

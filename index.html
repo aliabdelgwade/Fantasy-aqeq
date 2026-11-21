@@ -5,9 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Aqeq League — فانتازي مدارس العقيق</title>
 <link rel="icon" href="favicon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1f4e86">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Aqeq League">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20261121f">
+<link rel="stylesheet" href="styles.css?v=20261121h">
 </head>
 <body>
 <header class="topbar">
@@ -20,6 +25,7 @@
       </div>
     </div>
     <div class="auth">
+      <div class="hbtns"><button class="hbtn" id="installBtn" type="button" hidden title="ثبّت التطبيق">📲</button><button class="hbtn" id="themeBtn" type="button">☀️</button></div>
       <button class="gbtn" id="googleBtn" hidden>
         <svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
         <span>الدخول بـ Google</span>
@@ -34,6 +40,7 @@
   </div>
 </header>
 <div class="stripes"><i></i><i></i><i></i><i></i></div>
+<div class="ann" id="annBar" hidden></div>
 <div class="setup" id="setupMsg" hidden></div>
 
 <div class="wrap">
@@ -44,6 +51,8 @@
     <button class="tab" data-tab="matches">المباريات</button>
     <button class="tab" data-tab="cup">🏆 البطولة</button>
     <button class="gw-btn" id="gwAdmin" type="button" hidden>⚙️ إدارة الجولات</button>
+    <button class="gw-btn" id="annAdmin" type="button" hidden>📢 الإعلان</button>
+    <button class="gw-btn" id="logAdmin" type="button" hidden>📜 السجل</button>
   </nav>
 
   <!-- ====== اختيار الفريق ====== -->
@@ -77,6 +86,7 @@
       <div class="actions">
         <button class="btn primary" id="saveTeam">حفظ الفريق</button>
         <button class="btn ghost" id="resetTeam">إعادة تعيين</button>
+        <button class="btn ghost" id="shareTeam" type="button">📤 مشاركة التشكيلة</button>
       </div>
       <p class="hint" id="rulesHint"></p>
     </div>
@@ -117,7 +127,10 @@
   <!-- ====== ترتيب الدوري ====== -->
   <section id="tab-table" class="panel table-panel" hidden>
     <h2>ترتيب الدوري</h2>
+    <div id="potw"></div>
+    <div class="pf-tabs st-tabs" id="stTabs"></div>
     <div id="standings"></div>
+    <div id="leagues" hidden></div>
   </section>
 </div>
 
@@ -329,6 +342,29 @@
   </form>
 </div>
 
+<!-- الإعلان (للمشرف) -->
+<div class="overlay" id="annModal" role="dialog" aria-modal="true">
+  <form class="modal" id="annForm" novalidate>
+    <div class="m-head"><h3>📢 الإعلان</h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body">
+      <label for="annText">نص الإعلان (يظهر شريط فوق الموقع للجميع)</label>
+      <textarea id="annText" maxlength="300" rows="3" placeholder="مثال: تأجيل مباراة النصر ليوم الخميس"></textarea>
+      <label for="annTheme">شكل الموقع</label>
+      <select id="annTheme"><option value="auto">تلقائي (ذهبي يوم النهائي)</option><option value="gold">ذهبي دائمًا</option><option value="off">عادي دائمًا</option></select>
+      <div class="err" id="annErr"></div>
+      <div class="actions"><button class="btn primary" type="submit">نشر</button><button class="btn ghost" type="button" id="annClear">حذف الإعلان</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>
+    </div>
+  </form>
+</div>
+
+<!-- سجل التعديلات -->
+<div class="overlay" id="logModal" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="m-head"><h3>📜 سجل التعديلات</h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body" id="logBody"></div>
+  </div>
+</div>
+
 <!-- توقع المباراة -->
 <div class="overlay" id="predModal" role="dialog" aria-modal="true">
   <form class="modal" id="predForm" novalidate>
@@ -347,6 +383,27 @@
   <div class="modal">
     <div class="m-head"><h3 id="plTitle"></h3><button type="button" class="x" data-close>✕</button></div>
     <div class="m-body" id="plBody"></div>
+  </div>
+</div>
+
+<!-- تثبيت التطبيق -->
+<div class="overlay" id="installModal" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="m-head"><h3>📲 ثبّت التطبيق</h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body" id="iosHelp">
+      <p><b>على الآيفون (Safari):</b></p>
+      <ol class="inst"><li>اضغط زر المشاركة <b>⬆️</b> تحت الشاشة.</li><li>اختر <b>«إضافة إلى الشاشة الرئيسية»</b>.</li><li>اضغط <b>«إضافة»</b>. يطلع لك أيقونة Aqeq League مثل التطبيق.</li></ol>
+      <p><b>على أندرويد (Chrome):</b> القائمة ⋮ ثم <b>«تثبيت التطبيق»</b> أو «إضافة إلى الشاشة الرئيسية».</p>
+    </div>
+  </div>
+</div>
+
+<!-- عارض الصور -->
+<div class="overlay ph-ov" id="photoModal" role="dialog" aria-modal="true">
+  <div class="ph-box">
+    <button type="button" class="x ph-x" data-close>✕</button>
+    <img id="phImg" alt="">
+    <div class="ph-nav"><button type="button" class="btn ghost sm" id="phPrev">→ السابقة</button><span id="phCount"></span><button type="button" class="btn ghost sm" id="phNext">التالية ←</button></div>
   </div>
 </div>
 
@@ -385,6 +442,6 @@
 <div class="loading" id="loading"><div class="spin"></div><b>انتظر قليلًا، يتم تحميل بياناتك وفريقك…</b></div>
 
 <div class="toast" id="toast"></div>
-<script type="module" src="app.js?v=20261121f"></script>
+<script type="module" src="app.js?v=20261121h"></script>
 </body>
 </html>
