@@ -10,8 +10,8 @@ import {
 
 import {
   SC, num, breakdown, sumObj, matchPts, totalPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
-} from './game.js?v=20261121c';
-import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261121c';
+} from './game.js?v=20261121e';
+import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261121e';
 
 const POS = {
   gk: { one: 'حارس', many: 'حراس', slot: 'حارس' },
@@ -1530,6 +1530,7 @@ function matchFeatured(m) {
   if (isDone(m)) mid.append(el('div', 'mt-fscore', `${m.sa} - ${m.sb}`), el('div', 'mt-fsub', 'انتهت'), el('div', 'mt-fsub', relDay(m.at)));
   else mid.append(el('div', 'mt-fday', relDay(m.at)), el('div', 'mt-ftime', fmtTime(m.at)));
   row.append(side(m.a), mid, side(m.b)); c.appendChild(row);
+  c.appendChild(predButtons(m));
   c.onclick = () => onMatchClick(m);
   return c;
 }
@@ -1660,6 +1661,7 @@ function openMatchEditor(id) {
   const ns = S.gws.length ? S.gws.map((g) => g.n) : [MX.round]; if (!ns.includes(MX.round)) ns.push(MX.round);
   ns.sort((x, y) => x - y).forEach((n) => { const o = document.createElement('option'); o.value = n; o.textContent = gwName(n); sel.appendChild(o); });
   sel.value = MX.round; sel.onchange = () => { MX.round = Number(sel.value); };
+  mxOpen.clear();
   $('#mxFin').checked = isDone(m) || Date.now() > m.at + 3600e3;
   $('#mxErr').textContent = ''; $('#mxSave').disabled = false; mxTab = 'lineup';
   mxRender(); openModal('#mxModal');
@@ -1694,12 +1696,61 @@ function mxLineup(body) {
       rt.oninput = () => { const v = Number(rt.value); if (rt.value === '' || !Number.isFinite(v)) delete MX.ratings[p.id]; else MX.ratings[p.id] = Math.max(0, Math.min(10, Math.round(v * 10) / 10)); };
       bo.onchange = () => { const v = Number(bo.value); if (v) MX.bonus[p.id] = v; else delete MX.bonus[p.id]; upd(); };
       const ctl = el('div', 'mx-ctl'); ctl.append(rs, rt, bo, pts);
-      r.append(nm, ctl); sec.appendChild(r); upd();
+      nm.classList.add('clickable'); nm.title = 'اضغطي لإضافة أهداف وبطاقات اللاعب';
+      const arrow = el('span', 'mx-arr', mxOpen.has(p.id) ? '▲' : '▼'); nm.appendChild(arrow);
+      const pp = el('div', 'mx-pp'); pp.hidden = !mxOpen.has(p.id);
+      nm.onclick = () => { if (mxOpen.has(p.id)) mxOpen.delete(p.id); else mxOpen.add(p.id); pp.hidden = !mxOpen.has(p.id); arrow.textContent = pp.hidden ? '▼' : '▲'; if (!pp.hidden) drawPP(); };
+      const drawPP = () => mxPlayerPanel(pp, p, s, () => { rs.value = L.st.includes(p.id) ? 'st' : L.bn.includes(p.id) ? 'bn' : ''; upd(); mxScore(); });
+      if (!pp.hidden) drawPP();
+      r.append(nm, ctl, pp); sec.appendChild(r); upd();
     });
     body.appendChild(sec);
   });
 }
 
+// لوحة اللاعب: أحداثه في هذه المباراة
+const mxOpen = new Set();
+function mxPlayerPanel(pp, p, s, changed) {
+  pp.innerHTML = '';
+  const L = MX.lineup[s];
+  const mine = MX.events.map((e, i) => [e, i]).filter(([e]) => e.p === p.id || e.as === p.id || e.out === p.id).sort((x, y) => minKey(x[0].min) - minKey(y[0].min));
+  const cnt = { g: 0, a: 0, yc: 0, rc: 0, pm: 0, og: 0 };
+  mine.forEach(([e]) => { if (e.t === 'goal' && e.p === p.id) cnt.g++; if (e.t === 'goal' && e.as === p.id) cnt.a++; if (['yc', 'rc', 'pm', 'og'].includes(e.t) && e.p === p.id) cnt[e.t]++; });
+  const sum = el('div', 'mx-psum');
+  [['⚽', 'أهداف', cnt.g], ['👟', 'صناعة', cnt.a], ['🟨', 'صفراء', cnt.yc], ['🟥', 'حمراء', cnt.rc], ['❌', 'جزاء ضائعة', cnt.pm], ['🔴', 'عكسي', cnt.og]].forEach(([i, l, v]) => { const c = el('div', 'mx-pc' + (v ? ' on' : '')); c.append(el('b', null, `${i} ${v}`), el('span', null, l)); sum.appendChild(c); });
+  pp.appendChild(sum);
+  const row = el('div', 'mx-padd');
+  const mn = el('input'); mn.type = 'text'; mn.maxLength = 7; mn.placeholder = 'الدقيقة'; mn.className = 'mx-pmin';
+  const er = el('div', 'err');
+  const teamGoals = () => MX.events.filter((e) => e.t === 'goal' && e.s === s && e.p && e.p !== p.id && !e.as);
+  const asSel = el('select', 'mx-pas'); asSel.hidden = true;
+  const add = (t) => {
+    const m0 = mn.value.replace(/[^0-9+]/g, '').slice(0, 7);
+    if (t !== 'as' && !m0.replace(/\D/g, '')) { er.textContent = 'اكتبي الدقيقة أول'; mn.focus(); return; }
+    if (t === 'as') {
+      const gs = teamGoals();
+      if (!gs.length) { er.textContent = 'سجّلي هدف زميله أولًا، وبعدها أضيفي الصناعة'; return; }
+      if (gs.length > 1 && asSel.hidden) { asSel.innerHTML = ''; gs.forEach((g) => { const o = document.createElement('option'); o.value = MX.events.indexOf(g); o.textContent = `هدف ${(S.byId.get(g.p) || {}).name || ''} ${minTxt(g.min)}`; asSel.appendChild(o); }); asSel.hidden = false; er.textContent = 'اختاري الهدف واضغطي 👟 مرة ثانية'; return; }
+      const g = gs.length === 1 ? gs[0] : MX.events[Number(asSel.value)]; g.as = p.id;
+    } else MX.events.push({ t, min: m0, s, p: p.id, ...(t === 'goal' ? { as: null } : {}) });
+    if (!L.st.includes(p.id) && !L.bn.includes(p.id)) L.st.push(p.id);
+    mxPlayerPanel(pp, p, s, changed); changed();
+  };
+  [['goal', '⚽ هدف'], ['as', '👟 صناعة'], ['yc', '🟨 صفراء'], ['rc', '🟥 حمراء'], ['pm', '❌ جزاء ضائعة'], ['og', '🔴 هدف عكسي']].forEach(([t, l]) => { const b = el('button', 'btn ghost sm', '+ ' + l); b.type = 'button'; b.onclick = () => add(t); row.appendChild(b); });
+  pp.append(el('label', null, 'الدقيقة ثم اختاري الحدث:'), mn, row, asSel, er);
+  const list = el('div', 'mx-plist');
+  mine.forEach(([e, i]) => {
+    let txt = `${EV_ICON[e.t]} ${minTxt(e.min)} ${EV[e.t]}`;
+    if (e.t === 'goal' && e.as === p.id) txt = `👟 ${minTxt(e.min)} صناعة هدف ${(S.byId.get(e.p) || {}).name || ''}`;
+    else if (e.t === 'goal' && e.as) txt += ` (صناعة ${(S.byId.get(e.as) || {}).name || ''})`;
+    if (e.t === 'sub') txt = e.p === p.id ? `🟢⬆ ${minTxt(e.min)} دخل بديل` : `🔻 ${minTxt(e.min)} خرج`;
+    const it = el('div', 'mx-ev'); const del = el('button', 'pf-edit', '✕'); del.type = 'button';
+    del.onclick = () => { if (e.t === 'goal' && e.as === p.id && e.p !== p.id) e.as = null; else MX.events.splice(i, 1); mxPlayerPanel(pp, p, s, changed); changed(); };
+    it.append(el('span', null, txt), del); list.appendChild(it);
+  });
+  if (!mine.length) list.appendChild(el('div', 'ev-ps', 'لا توجد أحداث لهذا اللاعب بعد.'));
+  pp.appendChild(list);
+}
 function optList(sel, list, empty) {
   sel.innerHTML = ''; if (empty) { const o = document.createElement('option'); o.value = ''; o.textContent = empty; sel.appendChild(o); }
   list.forEach((p) => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; sel.appendChild(o); });
@@ -1811,6 +1862,7 @@ function renderMatchView() {
     scr.appendChild(c); if (s === 'a') scr.appendChild(el('div', 'mv-ball', d.ev.some((e) => e.t === 'goal' || e.t === 'og') ? '⚽' : ''));
   });
   hd.appendChild(scr);
+  hd.appendChild(predButtons(m));
   if (S.admin) { const ed = el('div', 'mv-adm'); const b1 = el('button', 'btn primary sm', '📝 إدارة المباراة (التشكيلة والأحداث)'); b1.type = 'button'; b1.onclick = () => { closeModal('#mvModal'); openMatchEditor(m.id); }; const b2 = el('button', 'btn ghost sm', 'تعديل الفريقين والوقت'); b2.type = 'button'; b2.onclick = () => { closeModal('#mvModal'); openGameForm(m.id); }; ed.append(b1, b2); hd.appendChild(ed); }
   body.appendChild(hd);
   if (!played) { body.appendChild(el('div', 'empty-msg', 'تظهر التشكيلة والتفاصيل قريبًا.')); return; }
@@ -1918,4 +1970,79 @@ function mvStats(m, d, pane) {
   });
   if (!any) t.appendChild(el('div', 'empty-msg', 'لا توجد إحصائيات'));
   pane.appendChild(t);
+}
+
+
+// ---------- التوقعات ----------
+const predOpen = (m) => !isDone(m) && Date.now() < m.at;
+function predButtons(m) {
+  const w = el('div', 'pr-btns');
+  if (predOpen(m)) { const b1 = el('button', 'btn primary sm', '🎯 توقع المباراة'); b1.type = 'button'; b1.onclick = (e) => { e.stopPropagation(); openPredict(m.id); }; w.appendChild(b1); }
+  const b2 = el('button', 'btn ghost sm', '📋 التوقعات'); b2.type = 'button'; b2.onclick = (e) => { e.stopPropagation(); openPredList(m.id); }; w.appendChild(b2);
+  return w;
+}
+let prId = null;
+async function openPredict(id) {
+  const m = (S.matches || []).find((x) => x.id === id); if (!m) return;
+  if (!S.uid) { toast('سجّل دخول بقوقل أولًا عشان تتوقع'); googleLogin(); return; }
+  if (!predOpen(m)) { toast('انتهى وقت التوقع لهذه المباراة'); return; }
+  prId = id;
+  $('#prTitle').textContent = 'توقع المباراة';
+  const box = $('#prTeams'); box.innerHTML = '';
+  const side = (n, inp) => { const s = el('div', 'mt-fside'); s.append(tlogo(n, 'xl', true), el('div', 'mt-fname', n), inp); return s; };
+  const ia = el('input', 'pr-in'); ia.type = 'number'; ia.min = '0'; ia.max = '30'; ia.inputMode = 'numeric'; ia.id = 'prA'; ia.placeholder = '؟';
+  const ib = el('input', 'pr-in'); ib.type = 'number'; ib.min = '0'; ib.max = '30'; ib.inputMode = 'numeric'; ib.id = 'prB'; ib.placeholder = '؟';
+  box.append(side(m.a, ia), el('div', 'pr-dash', '-'), side(m.b, ib));
+  $('#prErr').textContent = ''; $('#prSave').disabled = true; $('#prSave').textContent = 'حفظ التوقع';
+  $('#prNote').textContent = `آخر موعد للتوقع: ${relDay(m.at)} ${fmtTime(m.at)}`;
+  openModal('#predModal');
+  try {
+    const s = await getDoc(doc(S.db, 'matches', id, 'preds', S.uid));
+    if (s.exists()) { const p = s.data(); ia.value = p.a; ib.value = p.b; $('#prSave').textContent = 'تعديل التوقع'; $('#prNote').textContent += ' · سبق وتوقعت، تقدر تعدّل توقعك فقط'; }
+  } catch (e) { /* أول توقع */ }
+  $('#prSave').disabled = false;
+}
+$('#predForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const va = numOrNull($('#prA').value), vb = numOrNull($('#prB').value);
+  if (va == null || vb == null || va > 30 || vb > 30) { $('#prErr').textContent = 'اكتب نتيجة الفريقين'; return; }
+  const u = S.auth.currentUser; const t = S.teams.get(S.uid);
+  const name = ((t && t.name) || (u && u.displayName) || 'لاعب').slice(0, 60);
+  $('#prSave').disabled = true;
+  try {
+    await setDoc(doc(S.db, 'matches', prId, 'preds', S.uid), { a: va, b: vb, name, updatedAt: Date.now() });
+    closeModal('#predModal'); toast('تم حفظ توقعك ✅');
+  } catch (er) { $('#prSave').disabled = false; $('#prErr').textContent = predOpen((S.matches || []).find((x) => x.id === prId) || {}) ? errText(er) : 'انتهى وقت التوقع'; }
+};
+async function openPredList(id) {
+  const m = (S.matches || []).find((x) => x.id === id); if (!m) return;
+  $('#plTitle').textContent = `توقعات: ${m.a} × ${m.b}`;
+  const box = $('#plBody'); box.innerHTML = ''; box.appendChild(el('div', 'empty-msg', 'جاري التحميل…'));
+  openModal('#predList');
+  let list = [];
+  try { const s = await getDocs(collection(S.db, 'matches', id, 'preds')); list = s.docs.map((d) => ({ uid: d.id, ...d.data() })); }
+  catch (e) { box.innerHTML = ''; box.appendChild(el('div', 'err', errText(e))); return; }
+  box.innerHTML = '';
+  const done = isDone(m);
+  const res = (x, y) => Math.sign(x - y);
+  const kind = (p) => (!done ? '' : p.a === m.sa && p.b === m.sb ? 'exact' : res(p.a, p.b) === res(m.sa, m.sb) ? 'win' : 'miss');
+  const rank = { exact: 0, win: 1, miss: 2, '': 3 };
+  list.sort((x, y) => rank[kind(x)] - rank[kind(y)] || x.updatedAt - y.updatedAt);
+  const hh = el('div', 'pl-sum');
+  hh.append(el('span', null, `عدد التوقعات: ${list.length}`));
+  if (list.length) {
+    const wa = list.filter((p) => p.a > p.b).length, dr = list.filter((p) => p.a === p.b).length, wb = list.length - wa - dr;
+    const pc = (n) => Math.round((n / list.length) * 100) + '%';
+    const bar = el('div', 'pl-bar'); bar.append(el('span', 'pa', `${m.a} ${pc(wa)}`), el('span', 'pd', `تعادل ${pc(dr)}`), el('span', 'pb', `${m.b} ${pc(wb)}`));
+    hh.appendChild(bar);
+  }
+  if (done) hh.appendChild(el('div', 'pl-res', `النتيجة: ${m.a} ${m.sa} - ${m.sb} ${m.b}`));
+  box.appendChild(hh);
+  if (!list.length) { box.appendChild(el('div', 'empty-msg', 'لا توجد توقعات بعد.')); return; }
+  list.forEach((p) => {
+    const k = kind(p); const r = el('div', 'pl-row ' + k + (p.uid === S.uid ? ' me' : ''));
+    const sc4 = el('div', 'pl-sc'); sc4.append(el('b', null, String(p.a)), el('span', null, '-'), el('b', null, String(p.b)));
+    r.append(el('div', 'pl-n', p.name + (p.uid === S.uid ? ' (أنت)' : '')), sc4, el('div', 'pl-k', k === 'exact' ? '🎯 توقع صحيح' : k === 'win' ? '✅ الفائز صح' : k === 'miss' ? '❌' : ''));
+    box.appendChild(r);
+  });
 }

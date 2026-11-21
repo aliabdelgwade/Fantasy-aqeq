@@ -7,7 +7,7 @@
 <link rel="icon" href="favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20261121c">
+<link rel="stylesheet" href="styles.css?v=20261121e">
 </head>
 <body>
 <header class="topbar">
@@ -329,6 +329,27 @@
   </form>
 </div>
 
+<!-- توقع المباراة -->
+<div class="overlay" id="predModal" role="dialog" aria-modal="true">
+  <form class="modal" id="predForm" novalidate>
+    <div class="m-head"><h3 id="prTitle"></h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body">
+      <div class="pr-teams" id="prTeams"></div>
+      <p class="hint" id="prNote"></p>
+      <div class="err" id="prErr"></div>
+      <div class="actions"><button class="btn primary" type="submit" id="prSave">حفظ التوقع</button><button class="btn ghost" type="button" data-close>إغلاق</button></div>
+    </div>
+  </form>
+</div>
+
+<!-- قائمة التوقعات -->
+<div class="overlay" id="predList" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="m-head"><h3 id="plTitle"></h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body" id="plBody"></div>
+  </div>
+</div>
+
 <!-- صفحة المباراة -->
 <div class="overlay" id="mvModal" role="dialog" aria-modal="true">
   <div class="modal wide">
@@ -364,6 +385,6 @@
 <div class="loading" id="loading"><div class="spin"></div><b>انتظر قليلًا، يتم تحميل بياناتك وفريقك…</b></div>
 
 <div class="toast" id="toast"></div>
-<script type="module" src="app.js?v=20261121c"></script>
+<script type="module" src="app.js?v=20261121e"></script>
 </body>
 </html>

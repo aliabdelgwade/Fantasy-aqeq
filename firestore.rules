@@ -101,6 +101,18 @@ service cloud.firestore {
                    && request.resource.data.a is string && request.resource.data.a.size() <= 60
                    && request.resource.data.b is string && request.resource.data.b.size() <= 60
                    && request.resource.data.at is int;
+
+      // توقعات الجمهور: كل شخص توقع واحد فقط (يقدر يعدّله) قبل بداية المباراة
+      match /preds/{uid} {
+        allow read: if true;
+        allow delete: if isAdmin();
+        allow create, update: if request.auth != null && request.auth.uid == uid
+                     && request.resource.data.keys().hasOnly(['a', 'b', 'name', 'updatedAt'])
+                     && request.resource.data.a is int && request.resource.data.a >= 0 && request.resource.data.a <= 30
+                     && request.resource.data.b is int && request.resource.data.b >= 0 && request.resource.data.b <= 30
+                     && request.resource.data.name is string && request.resource.data.name.size() <= 60
+                     && request.time.toMillis() < get(/databases/$(database)/documents/matches/$(id)).data.at;
+      }
     }
 
     // البطولة (المجموعات والأدوار الإقصائية): الكل يقرأ والمشرفة فقط تكتب
