@@ -1,6 +1,6 @@
 // ================= Aqeq League — منطق الجولات (دوال نقية بدون Firebase) =================
 // نظام النقاط
-export const SC = { play: 2, goal: { gk: 5, def: 5, mid: 5, fwd: 5 }, assist: 4, cs: { gk: 4, def: 4, mid: 0, fwd: 0 }, yc: -1, rc: -3, pm: -2, og: -3, bonusMax: 2 };
+export const SC = { play: 2, goal: { gk: 5, def: 5, mid: 5, fwd: 5 }, assist: 4, cs: { gk: 4, def: 4, mid: 0, fwd: 0 }, yc: -1, rc: -3, pm: -2, ps: 3, og: -3, bonusMax: 2 };
 export const CHIPS = { wc: 'Wildcard', fh: 'Free Hit', bb: 'Bench Boost', tc: 'Triple Captain' };
 export const CHIP_MAX = { wc: 2, fh: 1, bb: 1, tc: 1 };
 export const HIT = 4;
@@ -10,7 +10,7 @@ export const FT_PER_WEEK = 2;
 export const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
 export function breakdown(pos, m) {
-  const zero = { min: 0, goals: 0, assists: 0, cs: 0, saves: 0, bonus: 0, yc: 0, rc: 0, pm: 0, og: 0, gc: 0 };
+  const zero = { min: 0, goals: 0, assists: 0, cs: 0, saves: 0, bonus: 0, yc: 0, rc: 0, pm: 0, ps: 0, og: 0, gc: 0 };
   const min = num(m.min);
   if (min <= 0) return zero;
   const ga = num(m.ga);
@@ -24,6 +24,7 @@ export function breakdown(pos, m) {
     yc: num(m.yc) * SC.yc,
     rc: num(m.rc) * SC.rc,
     pm: num(m.pm) * SC.pm,
+    ps: num(m.ps) * SC.ps,
     og: num(m.og) * SC.og,
     gc: 0,
   };

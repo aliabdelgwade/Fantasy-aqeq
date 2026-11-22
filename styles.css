@@ -596,13 +596,13 @@ input[type=datetime-local]{color-scheme:dark}
 .mx-arr{font-size:10px;color:var(--muted);margin-inline-start:4px}
 .mx-pp{flex-basis:100%;background:rgba(0,0,0,.18);border-radius:10px;padding:10px;margin-top:4px}
 .mx-pp label{font-size:12px;margin:8px 0 4px}
-.mx-psum{display:grid;grid-template-columns:repeat(6,1fr);gap:4px}
+.mx-psum{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
 .mx-pc{text-align:center;background:var(--panel2);border-radius:8px;padding:4px 2px;opacity:.55}.mx-pc.on{opacity:1;border:1px solid var(--yellow)}
 .mx-pc b{display:block;font-size:14px}.mx-pc span{font-size:10px;color:var(--muted)}
 .mx-pmin{width:110px!important;padding:6px 8px!important}
 .mx-padd{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .mx-pas{margin-top:6px}.mx-plist{display:flex;flex-direction:column;gap:4px;margin-top:8px}
-@media(max-width:560px){.mx-psum{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:560px){.mx-psum{grid-template-columns:repeat(4,1fr)}}
 
 /* أزرار الرأس */
 .auth{display:flex;align-items:center;gap:10px}

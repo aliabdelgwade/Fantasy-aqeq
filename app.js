@@ -10,8 +10,8 @@ import {
 
 import {
   SC, num, breakdown, sumObj, matchPts, totalPts, roundMatches, roundPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
-} from './game.js?v=20261122e';
-import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261122e';
+} from './game.js?v=20261122f';
+import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261122f';
 
 // ---------- سجل التعديلات: كل حفظ أو حذف من المشرفين ينكتب في logs ----------
 const NO_LOG = /^(logs|leagues)\/|\/(picks|preds|votes|comments)\//;
@@ -285,7 +285,7 @@ function renderList() {
 const POS_PL = { gk: 'الحراس', def: 'المدافعين', mid: 'لاعبي الوسط', fwd: 'المهاجمين' };
 const LBL = {
   min: 'دقائق اللعب', goals: 'الأهداف', assists: 'التمريرات الحاسمة', cs: 'الشباك النظيفة', saves: 'التصديات',
-  bonus: 'نقاط البونص', yc: 'البطاقات الصفراء', rc: 'البطاقات الحمراء', pm: 'ركلات جزاء ضائعة', og: 'أهداف عكسية', gc: 'أهداف مستقبلة',
+  bonus: 'نقاط البونص', yc: 'البطاقات الصفراء', rc: 'البطاقات الحمراء', pm: 'ركلات جزاء ضائعة', ps: 'تصدي لضربات جزاء', og: 'أهداف عكسية', gc: 'أهداف مستقبلة',
 };
 
 const signed = (n) => (n > 0 ? '+' + n : String(n));
@@ -467,6 +467,7 @@ function summaryLine(pos, m) {
   if (m.yc) a.push('🟨' + (m.yc > 1 ? '×' + m.yc : ''));
   if (m.rc) a.push('🟥');
   if (m.pm) a.push('ركلة جزاء ضائعة');
+  if (m.ps) a.push(`🧤 تصدى لجزاء${m.ps > 1 ? ' ×' + m.ps : ''}`);
   if (m.og) a.push('هدف عكسي');
   return a.join('  ·  ');
 }
@@ -486,7 +487,7 @@ function pfMatchesPane(p, w) {
   });
 }
 function pfStatsPane(p, w) {
-  const ms = (p.matches || []), tot = { min: 0, goals: 0, assists: 0, cs: 0, saves: 0, bonus: 0, yc: 0, rc: 0, pm: 0, og: 0, gc: 0 };
+  const ms = (p.matches || []), tot = { min: 0, goals: 0, assists: 0, cs: 0, saves: 0, bonus: 0, yc: 0, rc: 0, pm: 0, ps: 0, og: 0, gc: 0 };
   const pts = { ...tot }, val = { ...tot };
   ms.forEach((m) => {
     const b = breakdown(p.position, m), played = num(m.min) > 0;
@@ -495,9 +496,9 @@ function pfStatsPane(p, w) {
     val.min += num(m.min); val.goals += num(m.g); val.assists += num(m.a);
     if (num(m.ga) === 0) val.cs += 1;
     val.saves += num(m.sv); val.bonus += num(m.bo); val.yc += num(m.yc); val.rc += num(m.rc);
-    val.pm += num(m.pm); val.og += num(m.og); val.gc += num(m.ga);
+    val.pm += num(m.pm); val.ps += num(m.ps); val.og += num(m.og); val.gc += num(m.ga);
   });
-  const keys = ['min', 'goals', 'assists', 'cs', 'bonus', 'yc', 'rc', 'pm', 'og'];
+  const keys = ['min', 'goals', 'assists', 'cs', 'ps', 'bonus', 'yc', 'rc', 'pm', 'og'];
   const t = el('table', 'pf-table');
   const h = el('tr'); ['الإحصائية', 'العدد', 'النقاط'].forEach((x) => h.appendChild(el('th', null, x))); t.appendChild(h);
   keys.forEach((k) => {
@@ -558,7 +559,7 @@ function readMatchForm() {
   return {
     round: n('#mfRound', 99), opp: $('#mfOpp').value.trim().slice(0, 30), home: $('#mfHome').value === '1',
     gf: n('#mfGf', 99), ga: n('#mfGa', 99), min: n('#mfMin', 120), g: n('#mfG', 20), a: n('#mfA', 20),
-    sv: n('#mfSv', 60), bo: n('#mfBo', 2), yc: n('#mfYc', 2), rc: n('#mfRc', 1), pm: n('#mfPm', 5), og: n('#mfOg', 5),
+    sv: n('#mfSv', 60), bo: n('#mfBo', 2), yc: n('#mfYc', 2), rc: n('#mfRc', 1), pm: n('#mfPm', 5), ps: n('#mfPs', 5), og: n('#mfOg', 5),
   };
 }
 function mfPreview() {
@@ -582,7 +583,7 @@ function openMatchForm(pid, round) {
   $('#mfRound').value = m ? m.round : (fx ? fx.round : nextRound);
   $('#mfOpp').value = m ? m.opp : (fx ? fx.opp : '');
   $('#mfHome').value = (m ? m.home : (fx ? fx.home : true)) ? '1' : '0';
-  const v = { '#mfGf': 'gf', '#mfGa': 'ga', '#mfMin': 'min', '#mfG': 'g', '#mfA': 'a', '#mfSv': 'sv', '#mfBo': 'bo', '#mfYc': 'yc', '#mfRc': 'rc', '#mfPm': 'pm', '#mfOg': 'og' };
+  const v = { '#mfGf': 'gf', '#mfGa': 'ga', '#mfMin': 'min', '#mfG': 'g', '#mfA': 'a', '#mfSv': 'sv', '#mfBo': 'bo', '#mfYc': 'yc', '#mfRc': 'rc', '#mfPm': 'pm', '#mfPs': 'ps', '#mfOg': 'og' };
   Object.entries(v).forEach(([id, k]) => { $(id).value = m ? m[k] : (k === 'min' ? 60 : 0); });
   $('#mfErr').textContent = ''; $('#mfSave').disabled = false;
   $('#mfDelete').hidden = !m; $('#mfDelete').textContent = 'حذف المباراة'; $('#mfDelete').dataset.armed = '';
@@ -600,7 +601,7 @@ $('#matchForm').onsubmit = async (e) => {
   const m = readMatchForm(), err = (t) => { $('#mfErr').textContent = t; };
   if (m.round < 1) return err('اكتب رقم الجولة');
   if (!m.opp) return err('اكتب اسم الفريق الخصم');
-  if (m.min === 0 && (m.g || m.a || m.sv || m.bo || m.yc || m.rc || m.pm || m.og)) return err('اللاعب لم يشارك (الدقائق صفر) ولا يمكن تسجيل إحصائيات له');
+  if (m.min === 0 && (m.g || m.a || m.sv || m.bo || m.yc || m.rc || m.pm || m.ps || m.og)) return err('اللاعب لم يشارك (الدقائق صفر) ولا يمكن تسجيل إحصائيات له');
   const orig = (p.matches || []).find((x) => x.round === mfOrig);
   const ms = (p.matches || []).filter((x) => x.round !== mfOrig);
   if (ms.some((x) => x.round === m.round)) return err('هذه الجولة مسجّلة من قبل، عدّليها من القائمة');
@@ -1708,8 +1709,8 @@ $('#gDel').onclick = async () => {
 };
 
 // ---------- تفاصيل المباراة (مثل قوقل): الأحداث، التشكيلة، الإحصائيات ----------
-const EV = { goal: 'هدف', og: 'هدف عكسي', pm: 'ركلة جزاء ضائعة', yc: 'إنذار', rc: 'طرد', sub: 'تبديل', var: 'فار / ملاحظة' };
-const EV_ICON = { goal: '⚽', og: '🔴⚽', pm: '❌', yc: '🟨', rc: '🟥', sub: '🔁', var: '📺' };
+const EV = { goal: 'هدف', og: 'هدف عكسي', pm: 'ركلة جزاء ضائعة', ps: 'تصدي لضربة جزاء', yc: 'إنذار', rc: 'طرد', sub: 'تبديل', var: 'فار / ملاحظة' };
+const EV_ICON = { goal: '⚽', og: '🔴⚽', pm: '❌', ps: '🧤', yc: '🟨', rc: '🟥', sub: '🔁', var: '📺' };
 const TST = [['shots', 'التسديدات'], ['sot', 'على المرمى'], ['poss', 'الاستحواذ %'], ['fouls', 'الأخطاء']];
 const minKey = (s) => { const t = String(s || '').replace(/[^0-9+]/g, ''); const [x, y] = t.split('+'); return (Number(x) || 0) + (Number(y) || 0) / 100; };
 const minTxt = (s) => (s ? '\u2066' + String(s).replace(/[^0-9+]/g, '') + "'\u2069" : '');
@@ -1720,7 +1721,7 @@ const sideClub = (m, s) => (s === 'a' ? m.a : m.b);
 function deriveMatch(m) {
   const ev = [...(m.events || [])].sort((x, y) => minKey(x.min) - minKey(y.min));
   let sa = 0, sb = 0; const pl = {};
-  const P = (id) => (pl[id] = pl[id] || { g: 0, a: 0, yc: 0, rc: 0, pm: 0, og: 0, in: null, out: null, goals: [] });
+  const P = (id) => (pl[id] = pl[id] || { g: 0, a: 0, yc: 0, rc: 0, pm: 0, ps: 0, og: 0, in: null, out: null, goals: [] });
   const lu = m.lineup || {};
   ['a', 'b'].forEach((s) => { ((lu[s] || {}).st || []).forEach((id) => { P(id).start = true; P(id).side = s; }); ((lu[s] || {}).bn || []).forEach((id) => { P(id).bench = true; P(id).side = s; }); });
   ev.forEach((e) => {
@@ -1729,6 +1730,7 @@ function deriveMatch(m) {
     else if (e.t === 'yc' && e.p) P(e.p).yc++;
     else if (e.t === 'rc' && e.p) P(e.p).rc++;
     else if (e.t === 'pm' && e.p) P(e.p).pm++;
+    else if (e.t === 'ps' && e.p) P(e.p).ps++;
     else if (e.t === 'sub') { if (e.p) { P(e.p).in = e.min; P(e.p).side = e.s; } if (e.out) P(e.out).out = e.min; }
     e._sa = sa; e._sb = sb;
   });
@@ -1738,7 +1740,7 @@ function deriveMatch(m) {
 function playerEntry(m, id, x, sa, sb, round) {
   const p = S.byId.get(id); const s = x.side || (p && p.club === m.b ? 'b' : 'a');
   return { round, opp: s === 'a' ? m.b : m.a, home: s === 'a', gf: s === 'a' ? sa : sb, ga: s === 'a' ? sb : sa, min: x.played ? 90 : 0, sv: 0,
-    g: x.g, a: x.a, yc: Math.min(2, x.yc), rc: Math.min(1, x.rc), pm: x.pm, og: x.og, bo: Math.max(0, Math.min(2, Number((m.bonus || {})[id]) || 0)), fx: m.id };
+    g: x.g, a: x.a, yc: Math.min(2, x.yc), rc: Math.min(1, x.rc), pm: x.pm, ps: x.ps, og: x.og, bo: Math.max(0, Math.min(2, Number((m.bonus || {})[id]) || 0)), fx: m.id };
 }
 
 // ===== محرر المباراة (للمشرف) =====
@@ -1806,10 +1808,10 @@ function mxPlayerPanel(pp, p, s, changed) {
   pp.innerHTML = '';
   const L = MX.lineup[s];
   const mine = MX.events.map((e, i) => [e, i]).filter(([e]) => e.p === p.id || e.as === p.id || e.out === p.id).sort((x, y) => minKey(x[0].min) - minKey(y[0].min));
-  const cnt = { g: 0, a: 0, yc: 0, rc: 0, pm: 0, og: 0 };
-  mine.forEach(([e]) => { if (e.t === 'goal' && e.p === p.id) cnt.g++; if (e.t === 'goal' && e.as === p.id) cnt.a++; if (['yc', 'rc', 'pm', 'og'].includes(e.t) && e.p === p.id) cnt[e.t]++; });
+  const cnt = { g: 0, a: 0, yc: 0, rc: 0, pm: 0, ps: 0, og: 0 };
+  mine.forEach(([e]) => { if (e.t === 'goal' && e.p === p.id) cnt.g++; if (e.t === 'goal' && e.as === p.id) cnt.a++; if (['yc', 'rc', 'pm', 'ps', 'og'].includes(e.t) && e.p === p.id) cnt[e.t]++; });
   const sum = el('div', 'mx-psum');
-  [['⚽', 'أهداف', cnt.g], ['👟', 'صناعة', cnt.a], ['🟨', 'صفراء', cnt.yc], ['🟥', 'حمراء', cnt.rc], ['❌', 'جزاء ضائعة', cnt.pm], ['🔴', 'عكسي', cnt.og]].forEach(([i, l, v]) => { const c = el('div', 'mx-pc' + (v ? ' on' : '')); c.append(el('b', null, `${i} ${v}`), el('span', null, l)); sum.appendChild(c); });
+  [['⚽', 'أهداف', cnt.g], ['👟', 'صناعة', cnt.a], ['🟨', 'صفراء', cnt.yc], ['🟥', 'حمراء', cnt.rc], ['❌', 'جزاء ضائعة', cnt.pm], ['🧤', 'تصدي جزاء', cnt.ps], ['🔴', 'عكسي', cnt.og]].forEach(([i, l, v]) => { const c = el('div', 'mx-pc' + (v ? ' on' : '')); c.append(el('b', null, `${i} ${v}`), el('span', null, l)); sum.appendChild(c); });
   pp.appendChild(sum);
   const row = el('div', 'mx-padd');
   const mn = el('input'); mn.type = 'text'; mn.maxLength = 7; mn.placeholder = 'الدقيقة'; mn.className = 'mx-pmin';
@@ -1828,7 +1830,7 @@ function mxPlayerPanel(pp, p, s, changed) {
     if (!L.st.includes(p.id) && !L.bn.includes(p.id)) L.st.push(p.id);
     mxPlayerPanel(pp, p, s, changed); changed();
   };
-  [['goal', '⚽ هدف'], ['as', '👟 صناعة'], ['yc', '🟨 صفراء'], ['rc', '🟥 حمراء'], ['pm', '❌ جزاء ضائعة'], ['og', '🔴 هدف عكسي']].forEach(([t, l]) => { const b = el('button', 'btn ghost sm', '+ ' + l); b.type = 'button'; b.onclick = () => add(t); row.appendChild(b); });
+  [['goal', '⚽ هدف'], ['as', '👟 صناعة'], ['yc', '🟨 صفراء'], ['rc', '🟥 حمراء'], ['pm', '❌ جزاء ضائعة'], ['ps', '🧤 تصدي لجزاء'], ['og', '🔴 هدف عكسي']].forEach(([t, l]) => { const b = el('button', 'btn ghost sm', '+ ' + l); b.type = 'button'; b.onclick = () => add(t); row.appendChild(b); });
   pp.append(el('label', null, 'الدقيقة ثم اختاري الحدث:'), mn, row, asSel, er);
   const list = el('div', 'mx-plist');
   mine.forEach(([e, i]) => {
@@ -2023,7 +2025,7 @@ function lineupPlayer(id, x, m) {
   const av = el('div', 'mv-av'); av.appendChild(avatar(p, 'mv-pic'));
   const r = (m.ratings || {})[id]; if (r != null) av.appendChild(el('span', 'mv-rt ' + rtClass(r), r.toFixed(1)));
   const ic = el('div', 'mv-ic');
-  if (x) { for (let k = 0; k < x.g; k++) ic.appendChild(el('span', null, '⚽')); if (x.og) ic.appendChild(el('span', null, '🔴')); if (x.a) ic.appendChild(el('span', null, '👟'.repeat(x.a))); if (x.yc) ic.appendChild(el('span', null, x.yc > 1 ? '🟨🟨' : '🟨')); if (x.rc) ic.appendChild(el('span', null, '🟥')); if (x.out) ic.appendChild(el('span', 'mv-out', '🔻')); }
+  if (x) { for (let k = 0; k < x.g; k++) ic.appendChild(el('span', null, '⚽')); if (x.og) ic.appendChild(el('span', null, '🔴')); if (x.a) ic.appendChild(el('span', null, '👟'.repeat(x.a))); if (x.yc) ic.appendChild(el('span', null, x.yc > 1 ? '🟨🟨' : '🟨')); if (x.rc) ic.appendChild(el('span', null, '🟥')); if (x.ps) ic.appendChild(el('span', null, '🧤'.repeat(x.ps))); if (x.out) ic.appendChild(el('span', 'mv-out', '🔻')); }
   av.appendChild(ic);
   w.append(av, el('div', 'mv-ln', p.name));
   w.onclick = () => { closeModal('#mvModal'); openProfile(p.id); };
@@ -2063,7 +2065,7 @@ function mvLineup(m, d, pane) {
     cols.appendChild(col);
   });
   bn.appendChild(cols); pane.appendChild(bn);
-  const lg = el('div', 'mv-legend'); lg.innerHTML = '<span>⚽ هدف</span><span>🔴 هدف عكسي</span><span>👟 صناعة</span><span>🟨 إنذار</span><span>🟥 طرد</span><span>🟢⬆ دخل</span><span>🔻 خرج</span><span>التقييم من 0 إلى 10</span>';
+  const lg = el('div', 'mv-legend'); lg.innerHTML = '<span>⚽ هدف</span><span>🔴 هدف عكسي</span><span>👟 صناعة</span><span>🟨 إنذار</span><span>🟥 طرد</span><span>🧤 تصدي لجزاء</span><span>🟢⬆ دخل</span><span>🔻 خرج</span><span>التقييم من 0 إلى 10</span>';
   pane.appendChild(lg);
 }
 function mvStats(m, d, pane) {
