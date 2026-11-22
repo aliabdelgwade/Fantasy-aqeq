@@ -34,9 +34,11 @@ service cloud.firestore {
     }
 
     function validTeam(d) {
-      return d.keys().hasOnly(['name', 'createdAt', 'updatedAt'])
+      return d.keys().hasOnly(['name', 'createdAt', 'updatedAt', 'gName', 'gPhoto'])
         && d.name is string && d.name.size() > 0 && d.name.size() <= 30
-        && d.createdAt is int && d.updatedAt is int;
+        && d.createdAt is int && d.updatedAt is int
+        && (!('gName' in d) || (d.gName is string && d.gName.size() <= 80))
+        && (!('gPhoto' in d) || (d.gPhoto is string && d.gPhoto.size() <= 600));
     }
 
     function validGw(d) {

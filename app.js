@@ -10,8 +10,8 @@ import {
 
 import {
   SC, num, breakdown, sumObj, matchPts, totalPts, roundMatches, roundPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
-} from './game.js?v=20261122c';
-import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261122c';
+} from './game.js?v=20261122e';
+import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261122e';
 
 // ---------- سجل التعديلات: كل حفظ أو حذف من المشرفين ينكتب في logs ----------
 const NO_LOG = /^(logs|leagues)\/|\/(picks|preds|votes|comments)\//;
@@ -309,6 +309,7 @@ function ranks(p) {
 }
 async function ensureTeams() {
   if (!S.db) return;
+  if (!S.admin) { if (S.table && S.table.sel) S.sel = S.table.sel; return; }
   try { await loadPicks(false); if ($('#profileModal').classList.contains('open')) renderProfile(); }
   catch { /* نسبة الاختيار اختيارية */ }
 }
@@ -316,6 +317,7 @@ async function ensureTeams() {
 let picksP = null, picksSeq = 0;
 function loadPicks(force) {
   if (!S.db) return Promise.resolve();
+  if (!S.admin) return loadMineOnce(); // الزائر ما يقرا كل الفرق (توفير القراءات)، يقرا ملخص الترتيب فقط
   if (!force && S.picksT && Date.now() - S.picksT < 30000 && picksP) return picksP;
   const my = ++picksSeq; const gws = S.gws.slice();
   picksP = (async () => {
@@ -688,13 +690,14 @@ $('#saveTeam').onclick = async () => {
   try {
     const now = Date.now();
     const old = S.teams.get(S.uid);
-    await setDoc(doc(S.db, 'teams', S.uid), { name, createdAt: old?.createdAt || now, updatedAt: now });
+    await setDoc(doc(S.db, 'teams', S.uid), { name, createdAt: old?.createdAt || now, updatedAt: now, ...gInfo() });
     await setDoc(doc(S.db, 'gameweeks', String(n), 'picks', S.uid), {
       formation: S.formation, starters: ORDER.flatMap((k) => S.slots[k]), bench: S.bench,
       captain: S.captain, vice: S.vice, chip: S.chip || null, updatedAt: now,
     });
     S.hasTeam = true;
-    await loadPicks(true); renderGwBar(); renderChips(); renderTeam();
+    if (S.admin) await loadPicks(true); else { mineT = 0; await loadMine(); computeBase(); }
+    renderGwBar(); renderChips(); renderTeam();
     toast(`تم حفظ فريقك (${gwLabel(S.openGw)}) ✅`);
   } catch (e) { toast(errText(e), true); }
   finally { btn.disabled = false; }
@@ -719,14 +722,8 @@ async function renderStandings() {
   box.appendChild(el('div', 'empty-msg', 'جارٍ التحميل…'));
   let rows;
   try {
-    await loadPicks(true);
-    const now = Date.now();
-    rows = [...S.teams.entries()].map(([uid, t]) => {
-      const tt = teamTotals(S.gws, S.allPicks[uid] || {}, S.byId, S.rules.formations, now);
-      const ns = Object.keys(tt.perGw).map(Number);
-      const last = ns.length ? tt.perGw[Math.max(...ns)] : null;
-      return { uid, t, tt, last, lastN: ns.length ? Math.max(...ns) : null };
-    }).sort((a, b) => b.tt.total - a.tt.total || a.t.createdAt - b.t.createdAt);
+    if (S.admin) { rows = await computeTable(true); publishTable(rows); }
+    else rows = tableRows();
   } catch (e) { box.innerHTML = ''; box.appendChild(el('div', 'empty-msg', errText(e))); return; }
   box.innerHTML = '';
   if (!rows.length) { box.appendChild(el('div', 'empty-msg', 'لا توجد فرق بعد. كن أول من يحفظ فريقه!')); return; }
@@ -756,9 +753,23 @@ async function renderStandings() {
   });
   box.appendChild(tbl);
 }
-function openTeamModal(r) {
+async function openTeamModal(r) {
+  if (!S.allPicks[r.uid] || !r.tt.perGw || r.light) {
+    $('#teamBody').innerHTML = ''; $('#tmTitle').textContent = r.t.name; $('#teamBody').appendChild(el('div', 'empty-msg', 'جاري التحميل…')); openModal('#teamModal');
+    try { await fetchUserPicks(r.uid); } catch (e) { $('#teamBody').innerHTML = ''; $('#teamBody').appendChild(el('div', 'err', errText(e))); return; }
+    const tt = teamTotals(S.gws, S.allPicks[r.uid] || {}, S.byId, S.rules.formations, Date.now());
+    r = { ...r, tt, light: false };
+  }
   const body = $('#teamBody'); body.innerHTML = '';
   $('#tmTitle').textContent = r.t.name;
+  const tinfo = (S.teams.get(r.uid)) || r.t;
+  if (tinfo.gName || tinfo.gPhoto) {
+    const ow = el('div', 'tm-owner');
+    const av = el('span', 'tm-gav');
+    if (tinfo.gPhoto) { const im = new Image(); im.src = tinfo.gPhoto; im.alt = ''; im.referrerPolicy = 'no-referrer'; im.onerror = () => { av.textContent = initialOf(tinfo.gName || '؟'); }; av.appendChild(im); } else av.textContent = initialOf(tinfo.gName || '؟');
+    ow.append(av, el('span', null, tinfo.gName || ''));
+    $('#tmTitle').appendChild(ow);
+  }
   body.appendChild(el('div', 'tm-total', `المجموع: ${r.tt.total} نقطة`));
   // التشكيلة: صاحب الفريق والمشرف يشوفون الأحدث، والبقية بعد انتهاء الموعد النهائي (حتى لا يُنسخ الفريق)
   const canSee = S.admin || S.uid === r.uid;
@@ -1013,10 +1024,10 @@ $('#koForm').onsubmit = async (e) => {
 // مراحل جولات الفانتازي (قسم ثانوي)
 async function fantasyStages(box) {
   box.appendChild(el('div', 'empty-msg', 'جارٍ التحميل…'));
-  try { await loadPicks(false); } catch (e) { box.innerHTML = ''; box.appendChild(el('div', 'empty-msg', errText(e))); return; }
+  let totals;
+  try { totals = S.admin ? await computeTable() : tableRows(); } catch (e) { box.innerHTML = ''; box.appendChild(el('div', 'empty-msg', errText(e))); return; }
   box.innerHTML = '';
   const now = Date.now();
-  const totals = [...S.teams.entries()].map(([uid, t]) => ({ uid, t, tt: teamTotals(S.gws, S.allPicks[uid] || {}, S.byId, S.rules.formations, now) }));
   Object.keys(STAGES).forEach((st) => {
     const list = S.gws.filter((g) => (g.stage || 'gw') === st);
     const sec = el('div', 'cup-stage' + (st === 'final' ? ' cup-final' : ''));
@@ -1226,16 +1237,30 @@ function computeBase() {
   S.base = tl.base; S.used = tl.used; S.ft = tl.ft;
 }
 // قراءة مباشرة لفريقي واختياراتي (احتياط إضافي، لا يعتمد على قراءة كل الفرق)
+let mineT = 0, mineFor = null, mineP = null;
+function loadMineOnce() {
+  if (mineP && mineFor === S.uid && Date.now() - mineT < 60000) return mineP;
+  mineP = loadMine(); return mineP;
+}
 async function loadMine() {
-  if (!S.uid || !S.gws.length) return;
+  if (!S.uid || !S.gws.length) { mineFor = S.uid || null; return; }
   const uid = S.uid;
   try {
     const [t, ...ps] = await Promise.all([getDoc(doc(S.db, 'teams', uid)),
       ...S.gws.map((g) => getDoc(doc(S.db, 'gameweeks', String(g.n), 'picks', uid)))]);
     if (uid !== S.uid) return;
-    if (t.exists()) S.teams.set(uid, t.data());
-    ps.forEach((sn, i) => { if (sn.exists()) { S.allPicks[uid] = S.allPicks[uid] || {}; S.allPicks[uid][S.gws[i].n] = sn.data(); } });
-  } catch (e) { toast('تعذر قراءة فريقك: ' + errText(e), true); }
+    if (t.exists()) {
+      const td = t.data(); S.teams.set(uid, td);
+      const gi = gInfo();
+      if (gi.gName && (td.gName !== gi.gName || (td.gPhoto || '') !== (gi.gPhoto || ''))) {
+        const nd = { name: td.name, createdAt: td.createdAt, updatedAt: td.updatedAt || Date.now(), ...gi };
+        fsSetDoc(doc(S.db, 'teams', uid), nd).then(() => S.teams.set(uid, nd)).catch(() => {});
+      }
+    }
+    S.allPicks[uid] = {};
+    ps.forEach((sn, i) => { if (sn.exists()) S.allPicks[uid][S.gws[i].n] = sn.data(); });
+    mineFor = uid; mineT = Date.now();
+  } catch (e) { mineFor = uid; toast('تعذر قراءة فريقك: ' + errText(e), true); }
 }
 // شاشة انتظار حتى يكتمل تحميل بيانات المستخدم وفريقه (تمنع الحفظ قبل التحميل)
 let loadTimer = null;
@@ -1255,15 +1280,17 @@ function renderDiag() {
 async function refreshGame(force) {
   const old = S.openGw && S.openGw.n;
   S.openGw = S.gws.find((g) => g.deadline > Date.now()) || null;
-  try {
-    await loadPicks(!!force);
-    // تأكد أن اختيارات الجولة المفتوحة تم تحميلها فعلًا قبل بناء الفريق
-    if (S.openGw && !(S.picksFor || []).includes(S.openGw.n)) await loadPicks(true);
-  } catch (e) { toast('تعذر تحميل الفرق: ' + errText(e), true); }
-  await loadMine();
+  if (S.admin) {
+    try {
+      await loadPicks(!!force);
+      if (S.openGw && !(S.picksFor || []).includes(S.openGw.n)) await loadPicks(true);
+    } catch (e) { toast('تعذر تحميل الفرق: ' + errText(e), true); }
+  }
+  if (force) mineT = 0;
+  await loadMineOnce();
   computeBase();
   // تحميل فريقي في المنشئ مرة واحدة لكل (مستخدم + جولة). إذا لا توجد جولة مفتوحة نعرض آخر تشكيلة محفوظة
-  const key = S.uid && S.picksT && S.gwsLoaded ? S.uid + ':' + (S.openGw ? S.openGw.n : 'none') : null;
+  const key = S.uid && S.gwsLoaded && mineFor === S.uid ? S.uid + ':' + (S.openGw ? S.openGw.n : 'none') : null;
   if (key && S.loadedFor !== key) {
     S.loadedFor = key;
     const t = S.teams.get(S.uid); if (t) { $('#teamName').value = t.name || ''; S.hasTeam = true; }
@@ -1285,6 +1312,7 @@ function setAdmin(on) {
   if (!$('#tab-cup').hidden) renderCup();
   if (!$('#tab-clubs').hidden) renderClubs();
   $('#adminChip').hidden = !on; $('#addPlayer').hidden = !on; $('#gwAdmin').hidden = !on; $('#annAdmin').hidden = !on; $('#logAdmin').hidden = !on;
+  if (on) setTimeout(() => adminRefreshTable(false), 4000);
   renderList();
   if (S.profile && $('#profileModal').classList.contains('open')) renderProfile();
 }
@@ -1331,7 +1359,7 @@ function renderGwAdmin() {
     const edit = el('button', 'btn ghost sm', 'تعديل الموعد');  edit.onclick = () => loadGwForm(g);
     const fin = el('button', 'btn ghost sm', g.final ? 'إعادة فتح الحساب' : 'إنهاء الجولة (حساب البدلاء والكابتن)'); 
     fin.onclick = async () => {
-      try { await setDoc(doc(S.db, 'gameweeks', String(g.n)), { n: g.n, stage: g.stage || 'gw', deadline: g.deadline, final: !g.final }, { merge: true }); toast('تم'); }
+      try { await setDoc(doc(S.db, 'gameweeks', String(g.n)), { n: g.n, stage: g.stage || 'gw', deadline: g.deadline, final: !g.final }, { merge: true }); toast('تم'); setTimeout(() => adminRefreshTable(true), 1500); }
       catch (e) { toast(errText(e), true); }
     };
     edit.type = fin.type = 'button'; acts.append(edit, fin);
@@ -1534,6 +1562,7 @@ playersReady = new Promise((r) => { playersLoaded = r; });
     (snap) => { S.matches = snap.docs.map((d) => ({ id: d.id, ...d.data() })); applyGold(); if (!$('#tab-matches').hidden) renderMatches(); if (!$('#tab-cup').hidden) renderCup(); if ($('#mvModal').classList.contains('open')) renderMatchView(); },
     () => {});
 
+  onSnapshot(doc(S.db, 'site', 'table'), (s) => { S.table = s.exists() ? s.data() : null; if (!S.admin && S.table && S.table.sel) S.sel = S.table.sel; if (!$('#tab-table').hidden && !S.admin) renderStandings(); }, () => {});
   onSnapshot(doc(S.db, 'site', 'potw'), (s) => { S.potw = s.exists() ? s.data() : null; if (!$('#tab-table').hidden) renderPotw(); }, () => {});
   onSnapshot(doc(S.db, 'site', 'main'), (s) => { S.site = s.exists() ? s.data() : {}; renderAnn(); applyGold(); }, () => {});
 
@@ -1913,6 +1942,7 @@ $('#mxForm').onsubmit = async (e) => {
     const ev = MX.events.map(({ _sa, _sb, ...r }) => r);
     const out = clean({ a: MX.a, b: MX.b, at: MX.at, sa: fin ? d.sa : null, sb: fin ? d.sb : null, round, lineup: MX.lineup, events: ev, stats: MX.stats, ratings: MX.ratings, bonus: MX.bonus, updatedAt: Date.now() });
     await setDoc(doc(S.db, 'matches', MX.id), out);
+    adminRefreshTable(true);
     closeModal('#mxModal'); toast(fin ? 'تم حفظ المباراة ونقاط اللاعبين ✅' : 'تم حفظ التشكيلة، تظهر للجميع الآن ✅');
   } catch (er) { $('#mxSave').disabled = false; $('#mxErr').textContent = errText(er); }
 };
@@ -2319,7 +2349,7 @@ async function renderLeague(box, id) {
   box.innerHTML = '';
   const back = el('button', 'btn ghost sm', '→ رجوع لدورياتي'); back.type = 'button'; back.onclick = () => { openLg = null; renderLeagues(); }; box.appendChild(back);
   let L;
-  try { const s = await getDoc(doc(S.db, 'leagues', id)); if (!s.exists()) { openLg = null; renderLeagues(); return; } L = { id, ...s.data() }; await loadPicks(); }
+  try { const s = await getDoc(doc(S.db, 'leagues', id)); if (!s.exists()) { openLg = null; renderLeagues(); return; } L = { id, ...s.data() }; if (S.admin) await loadPicks(); }
   catch (e) { box.appendChild(el('div', 'err', errText(e))); return; }
   const own = L.owner === S.uid;
   const hd = el('div', 'lg-head');
@@ -2330,8 +2360,8 @@ async function renderLeague(box, id) {
   cp.onclick = async () => { const u = joinUrl(L.id); try { if (navigator.share) await navigator.share({ title: L.name, text: `انضم لدوري «${L.name}» في Aqeq League`, url: u }); else { await navigator.clipboard.writeText(u); toast('تم نسخ الرابط'); } } catch (e) { try { await navigator.clipboard.writeText(u); toast('تم نسخ الرابط'); } catch (e2) { prompt('انسخ الرابط:', u); } } };
   codeBox.appendChild(cp); hd.appendChild(codeBox); box.appendChild(hd);
   const now = Date.now();
-  const rows = L.members.map((uid) => { const t = S.teams.get(uid); return { uid, t, tt: t ? teamTotals(S.gws, S.allPicks[uid] || {}, S.byId, S.rules.formations, now) : { total: 0, perGw: {} } }; })
-    .sort((x, y) => y.tt.total - x.tt.total);
+  const tr0 = new Map((S.admin ? await computeTable() : tableRows()).map((x) => [x.uid, x]));
+  const rows = L.members.map((uid) => tr0.get(uid) || { uid, t: null, tt: { total: 0, perGw: {} } }).sort((x, y) => y.tt.total - x.tt.total);
   const tbl = el('table'); const h = el('tr'); ['#', 'الفريق', 'المجموع', ''].forEach((x) => h.appendChild(el('th', null, x))); tbl.appendChild(h);
   rows.forEach((r, i) => {
     const tr = el('tr', (r.uid === S.uid ? 'mine ' : '') + (r.t ? 'clickable' : ''));
@@ -2344,7 +2374,7 @@ async function renderLeague(box, id) {
       td.appendChild(d);
     }
     tr.appendChild(td);
-    if (r.t) { const ns = Object.keys(r.tt.perGw).map(Number); const last = ns.length ? r.tt.perGw[Math.max(...ns)] : null; tr.onclick = () => openTeamModal({ uid: r.uid, t: r.t, tt: r.tt, last }); }
+    if (r.t) tr.onclick = () => openTeamModal(r);
     tbl.appendChild(tr);
   });
   box.appendChild(tbl);
@@ -2606,3 +2636,58 @@ $('#installBtn').onclick = async () => {
 window.addEventListener('appinstalled', () => { $('#installBtn').hidden = true; });
 
 
+
+
+// ---------- ملخص الترتيب (توفير قراءات Firebase) ----------
+// المشرفة تحسب الترتيب من كل التشكيلات وتحفظه في site/table، والزوار يقرون هذا الملف الواحد فقط
+async function computeTable(force) {
+  await loadPicks(!!force);
+  const now = Date.now();
+  return [...S.teams.entries()].map(([uid, t]) => {
+    const tt = teamTotals(S.gws, S.allPicks[uid] || {}, S.byId, S.rules.formations, now);
+    const ns = Object.keys(tt.perGw).map(Number);
+    const last = ns.length ? tt.perGw[Math.max(...ns)] : null;
+    return { uid, t, tt, last, lastN: ns.length ? Math.max(...ns) : null };
+  }).sort((a2, b2) => b2.tt.total - a2.tt.total || (a2.t.createdAt || 0) - (b2.t.createdAt || 0));
+}
+let lastPub = '';
+async function publishTable(rows) {
+  if (!S.admin) return;
+  const out = rows.map((x) => ({ uid: x.uid, name: (x.t.name || '').slice(0, 40), c: x.t.createdAt || 0, gn: x.t.gName || '', gp: x.t.gPhoto || '', total: x.tt.total,
+    g: Object.fromEntries(Object.entries(x.tt.perGw).map(([n, v]) => [n, [v.net, v.chip || null]])) }));
+  const sel = S.sel ? { total: S.sel.total, counts: S.sel.counts } : { total: 0, counts: {} };
+  const key = JSON.stringify([out, sel]);
+  if (key === lastPub || (S.table && JSON.stringify([S.table.rows, S.table.sel]) === key)) { lastPub = key; return; }
+  try { await fsSetDoc(doc(S.db, 'site', 'table'), { rows: out, sel, at: Date.now() }); lastPub = key; } catch (e) { /* */ }
+}
+function tableRows() {
+  const rows = ((S.table && S.table.rows) || []).map((x) => {
+    const perGw = {}; Object.entries(x.g || {}).forEach(([n, v]) => { perGw[n] = { net: v[0], chip: v[1] }; });
+    const ns = Object.keys(perGw).map(Number);
+    return { uid: x.uid, t: { name: x.name, createdAt: x.c, gName: x.gn || '', gPhoto: x.gp || '' }, tt: { total: x.total, perGw }, last: ns.length ? perGw[Math.max(...ns)] : null, lastN: ns.length ? Math.max(...ns) : null, light: true };
+  });
+  // فريقي يظهر حتى لو ما تحدث الملخص بعد
+  if (S.uid && !rows.some((x) => x.uid === S.uid) && S.teams.get(S.uid)) rows.push({ uid: S.uid, t: S.teams.get(S.uid), tt: { total: 0, perGw: {} }, last: null, lastN: null, light: true });
+  return rows;
+}
+async function fetchUserPicks(uid) {
+  const gs = S.admin || uid === S.uid ? S.gws : S.gws.filter((g) => g.deadline <= Date.now());
+  const ps = await Promise.all(gs.map((g) => getDoc(doc(S.db, 'gameweeks', String(g.n), 'picks', uid)).catch(() => null)));
+  S.allPicks[uid] = S.allPicks[uid] || {};
+  ps.forEach((sn, i) => { if (sn && sn.exists()) S.allPicks[uid][gs[i].n] = sn.data(); });
+}
+// المشرفة: تحديث الملخص بعد حفظ المباريات وإنهاء الجولات، وعند الدخول (مرة كل 10 دقائق)
+let tableBusy = false;
+async function adminRefreshTable(force) {
+  if (!S.admin || tableBusy) return;
+  if (!force && S.table && Date.now() - (S.table.at || 0) < 600000) return;
+  tableBusy = true;
+  try { await publishTable(await computeTable(true)); } catch (e) { /* */ } finally { tableBusy = false; }
+}
+
+// اسم حساب قوقل وصورته (يظهر جنب اسم الفريق)
+function gInfo() {
+  const u = S.auth && S.auth.currentUser; if (!u) return {};
+  const o = {}; if (u.displayName) o.gName = u.displayName.slice(0, 80); if (u.photoURL && u.photoURL.length <= 600) o.gPhoto = u.photoURL;
+  return o;
+}
