@@ -10,8 +10,8 @@ import {
 
 import {
   SC, num, breakdown, sumObj, matchPts, totalPts, roundMatches, roundPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
-} from './game.js?v=20261122a';
-import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261122a';
+} from './game.js?v=20261122b';
+import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261122b';
 
 // ---------- سجل التعديلات: كل حفظ أو حذف من المشرفين ينكتب في logs ----------
 const NO_LOG = /^(logs|leagues)\/|\/(picks|preds|votes|comments)\//;
@@ -805,6 +805,32 @@ function tlogo(name, cls, always) {
 }
 function withLogo(node, name) { const lg = tlogo(name); if (lg) node.prepend(lg); return node; }
 
+// ربط تبويب المباريات بالبطولة: المباريات المنتهية تدخل المجموعات والأدوار الإقصائية تلقائيًا
+const KO_STAGES = { qf: ['qf1', 'qf2', 'qf'], sf: ['sf1', 'sf2', 'sf'], final: ['final'] };
+const matchStage = (m) => { const g = S.gws.find((x) => x.n === (m.round || gwOfTime(m.at))); return g ? g.stage : 'gw'; };
+const samePair = (m, a, b) => (m.a === a && m.b === b) || (m.a === b && m.b === a);
+const scoreFor = (m, a) => (m.a === a ? [m.sa, m.sb] : [m.sb, m.sa]);
+function groupLive(g) {
+  const res = [...(g.res || [])];
+  const T = new Set(g.teams || []);
+  (S.matches || []).filter((m) => isDone(m) && T.has(m.a) && T.has(m.b) && !['qf1', 'qf2', 'qf', 'sf1', 'sf2', 'sf', 'final', 'r16'].includes(matchStage(m)))
+    .forEach((m) => { if (!(g.res || []).some((x) => samePair(x, m.a, m.b))) res.push({ a: m.a, b: m.b, sa: m.sa, sb: m.sb }); });
+  return { ...g, res };
+}
+function koFill(st, item) {
+  if (!item.a || !item.b) return item;
+  const stg = KO_STAGES[st] || [];
+  const ms = (S.matches || []).filter((m) => isDone(m) && samePair(m, item.a, item.b) && stg.includes(matchStage(m))).sort((x, y) => x.at - y.at);
+  if (!ms.length) return item;
+  const out = { ...item };
+  const l1 = ms.find((m) => matchStage(m) === stg[0]) || ms[0];
+  const l2 = st !== 'final' ? (ms.find((m) => matchStage(m) === stg[1] && m !== l1) || ms.find((m) => m !== l1)) : null;
+  const isN2 = (v) => Number.isFinite(v);
+  if (!isN2(out.sa) && !isN2(out.sb)) [out.sa, out.sb] = scoreFor(l1, item.a);
+  if (l2 && !isN2(out.sa2) && !isN2(out.sb2)) [out.sa2, out.sb2] = scoreFor(l2, item.a);
+  return out;
+}
+
 function groupCard(g, gi) {
   const card = el('div', 'grp');
   const head = el('div', 'grp-h'); head.appendChild(el('b', null, g.name || `المجموعة ${gi + 1}`));
@@ -812,7 +838,7 @@ function groupCard(g, gi) {
   card.appendChild(head);
   const t = el('table', 'grp-t');
   const h = el('tr'); ['#', 'الفريق', 'لعب', 'ف', 'ت', 'خ', 'فرق', 'نقاط'].forEach((x) => h.appendChild(el('th', null, x))); t.appendChild(h);
-  standings(g).forEach((r, i) => {
+  standings(groupLive(g)).forEach((r, i) => {
     const tr = el('tr', i < 2 ? 'qual' : '');
     tr.append(el('td', null, String(i + 1)), withLogo(el('td', 'tn', r.team), r.team), el('td', null, String(r.p)), el('td', null, String(r.w)),
       el('td', null, String(r.d)), el('td', null, String(r.l)), el('td', null, (r.gd > 0 ? '+' : '') + r.gd), el('td', 'pts', String(r.pts)));
@@ -838,7 +864,7 @@ function bracketMatch(st, i, m) {
   return box;
 }
 function renderBracket(wrap) {
-  const R = resolveKo(S.cup.ko);
+  const R = resolveKo(S.cup.ko, koFill);
   const col = (st, from, to, cls) => {
     const c = el('div', 'bcol ' + cls); c.appendChild(el('div', 'bcol-t', KO_NAMES[st]));
     const inner = el('div', 'bcol-in');
@@ -1499,7 +1525,7 @@ playersReady = new Promise((r) => { playersLoaded = r; });
     () => {});
 
   onSnapshot(collection(S.db, 'matches'),
-    (snap) => { S.matches = snap.docs.map((d) => ({ id: d.id, ...d.data() })); applyGold(); if (!$('#tab-matches').hidden) renderMatches(); if ($('#mvModal').classList.contains('open')) renderMatchView(); },
+    (snap) => { S.matches = snap.docs.map((d) => ({ id: d.id, ...d.data() })); applyGold(); if (!$('#tab-matches').hidden) renderMatches(); if (!$('#tab-cup').hidden) renderCup(); if ($('#mvModal').classList.contains('open')) renderMatchView(); },
     () => {});
 
   onSnapshot(doc(S.db, 'site', 'potw'), (s) => { S.potw = s.exists() ? s.data() : null; if (!$('#tab-table').hidden) renderPotw(); }, () => {});

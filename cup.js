@@ -36,11 +36,12 @@ export function winner(m, two = false) {
 export function loser(m, two = false) { const w = winner(m, two); return w ? (w === m.a ? m.b : m.a) : null; }
 
 // الأدوار اللاحقة تُشتق تلقائيًا من الفائزين؛ يدخل المشرف فرق ربع النهائي فقط
-export function resolveKo(ko) {
+export function resolveKo(ko, fill) {
+  const F = (st, m) => (fill ? fill(st, m) : m);
   const get = (st, i) => ({ a: null, b: null, sa: null, sb: null, sa2: null, sb2: null, pa: null, pb: null, ...((ko && ko[st] && ko[st][i]) || {}) });
   const out = {};
-  out.qf = [...Array(KO.qf)].map((_, i) => get('qf', i));
-  const next = (st, prev, pst) => [...Array(KO[st])].map((_, i) => ({ ...get(st, i), a: winner(prev[2 * i], TWO_LEG.has(pst)), b: winner(prev[2 * i + 1], TWO_LEG.has(pst)) }));
+  out.qf = [...Array(KO.qf)].map((_, i) => F('qf', get('qf', i)));
+  const next = (st, prev, pst) => [...Array(KO[st])].map((_, i) => F(st, { ...get(st, i), a: winner(prev[2 * i], TWO_LEG.has(pst)), b: winner(prev[2 * i + 1], TWO_LEG.has(pst)) }));
   out.sf = next('sf', out.qf, 'qf'); out.final = next('final', out.sf, 'sf');
   out.champion = winner(out.final[0]);
   return out;
