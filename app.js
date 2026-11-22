@@ -10,8 +10,8 @@ import {
 
 import {
   SC, num, breakdown, sumObj, matchPts, totalPts, roundMatches, roundPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
-} from './game.js?v=20261121j';
-import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261121j';
+} from './game.js?v=20261122a';
+import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261122a';
 
 // ---------- سجل التعديلات: كل حفظ أو حذف من المشرفين ينكتب في logs ----------
 const NO_LOG = /^(logs|leagues)\/|\/(picks|preds|votes|comments)\//;
@@ -1649,7 +1649,7 @@ $('#gDel').onclick = async () => {
 // ---------- تفاصيل المباراة (مثل قوقل): الأحداث، التشكيلة، الإحصائيات ----------
 const EV = { goal: 'هدف', og: 'هدف عكسي', pm: 'ركلة جزاء ضائعة', yc: 'إنذار', rc: 'طرد', sub: 'تبديل', var: 'فار / ملاحظة' };
 const EV_ICON = { goal: '⚽', og: '🔴⚽', pm: '❌', yc: '🟨', rc: '🟥', sub: '🔁', var: '📺' };
-const TST = [['shots', 'التسديدات'], ['sot', 'على المرمى'], ['poss', 'الاستحواذ %'], ['passes', 'التمريرات'], ['acc', 'دقة التمرير %'], ['fouls', 'الأخطاء'], ['off', 'التسلل'], ['corners', 'الركنيات']];
+const TST = [['shots', 'التسديدات'], ['sot', 'على المرمى'], ['poss', 'الاستحواذ %'], ['fouls', 'الأخطاء']];
 const minKey = (s) => { const t = String(s || '').replace(/[^0-9+]/g, ''); const [x, y] = t.split('+'); return (Number(x) || 0) + (Number(y) || 0) / 100; };
 const minTxt = (s) => (s ? '\u2066' + String(s).replace(/[^0-9+]/g, '') + "'\u2069" : '');
 const clubPlayers = (c) => S.players.filter((p) => p.club === c).sort((x, y) => ORDER.indexOf(x.position) - ORDER.indexOf(y.position));
@@ -1805,7 +1805,21 @@ function mxEvents(body) {
   const wrap = (lbl, inp) => { const w = el('div'); const lb = typeof lbl === 'string' ? el('label', null, lbl) : lbl; w.append(lb, inp); return w; };
   f.append(wrap('النوع', t), wrap('الدقيقة', mn), wrap('الفريق', sd), wrap(l1, pl), wrap(l2, x2), wrap('الملاحظة', note));
   const add = el('button', 'btn add', '+ إضافة الحدث'); add.type = 'button';
+  const cancel = el('button', 'btn ghost sm', 'إلغاء التعديل'); cancel.type = 'button'; cancel.hidden = true;
   const er = el('div', 'err');
+  let editIdx = null;
+  const resetForm = () => { editIdx = null; add.textContent = '+ إضافة الحدث'; cancel.hidden = true; mn.value = ''; note.value = ''; er.textContent = ''; f.classList.remove('editing'); };
+  cancel.onclick = () => { resetForm(); drawList(); };
+  const startEdit = (i) => {
+    const e = MX.events[i]; editIdx = i;
+    t.value = e.t; sd.value = e.s; refresh();
+    if (e.p) pl.value = e.p;
+    if (e.t === 'goal') { optList(x2, clubPlayers(sideClub(MX, sd.value)).filter((p) => p.id !== pl.value), '— بدون'); x2.value = e.as || ''; }
+    if (e.t === 'sub') x2.value = e.out || '';
+    mn.value = e.min || ''; note.value = e.note || '';
+    add.textContent = '💾 حفظ التعديل'; cancel.hidden = false; er.textContent = ''; f.classList.add('editing');
+    drawList(); f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
   add.onclick = () => {
     if (!mn.value.replace(/[^0-9]/g, '')) { er.textContent = 'اكتبي الدقيقة'; return; }
     const e = { t: t.value, min: mn.value.replace(/[^0-9+]/g, '').slice(0, 7), s: sd.value, p: pl.value || null };
@@ -1813,10 +1827,12 @@ function mxEvents(body) {
     if (e.t === 'sub') { e.out = x2.value || null; if (e.out === e.p) { er.textContent = 'اختاري لاعبين مختلفين'; return; } }
     if (e.t === 'var') e.note = note.value.trim().slice(0, 80);
     else if (!e.p) { er.textContent = 'اختاري اللاعب'; return; }
-    MX.events.push(e); mn.value = ''; note.value = ''; er.textContent = ''; drawList(); mxScore();
+    if (editIdx != null) MX.events[editIdx] = e; else MX.events.push(e);
+    resetForm(); drawList(); mxScore();
   };
   t.onchange = refresh; sd.onchange = refresh; pl.onchange = () => { if (t.value === 'goal') optList(x2, clubPlayers(sideClub(MX, sd.value)).filter((p) => p.id !== pl.value), '— بدون'); };
-  body.append(f, add, er); refresh();
+  const btns = el('div', 'mx-evbtns'); btns.append(add, cancel);
+  body.append(f, btns, er); refresh();
   const list = el('div', 'mx-evlist'); body.appendChild(list);
   const pn = (id) => (S.byId.get(id) || {}).name || '؟';
   function drawList() {
@@ -1827,8 +1843,11 @@ function mxEvents(body) {
       const r = el('div', 'mx-ev');
       let txt = `${EV_ICON[e.t]} ${minTxt(e.min)} · ${EV[e.t]} · ${sideClub(MX, e.s)}`;
       if (e.p) txt += ` · ${pn(e.p)}`; if (e.t === 'goal' && e.as) txt += ` (صناعة ${pn(e.as)})`; if (e.t === 'sub') txt += ` ↔ ${pn(e.out)}`; if (e.note) txt += ` · ${e.note}`;
-      const del = el('button', 'pf-edit', '✕'); del.type = 'button'; del.onclick = () => { MX.events.splice(i, 1); drawList(); mxScore(); };
-      r.append(el('span', null, txt), del); list.appendChild(r);
+      if (i === editIdx) r.classList.add('editing');
+      const ed = el('button', 'pf-edit', '✏️'); ed.type = 'button'; ed.title = 'تعديل'; ed.onclick = () => startEdit(i);
+      const del = el('button', 'pf-edit', '✕'); del.type = 'button'; del.title = 'حذف'; del.onclick = () => { MX.events.splice(i, 1); if (editIdx === i) resetForm(); else if (editIdx > i) editIdx--; drawList(); mxScore(); };
+      const bx = el('div', 'mx-evact'); bx.append(ed, del);
+      r.append(el('span', null, txt), bx); list.appendChild(r);
     });
   }
   drawList();

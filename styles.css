@@ -699,3 +699,7 @@ body.light .topbar,body.light .topbar .brand h1,body.light .topbar .brand p,body
 .potw-ed{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.35);border:0;border-radius:8px;padding:2px 6px;color:#fff}
 #potw>.btn{margin-bottom:10px}
 body .potw.clickable{padding-inline-end:44px}
+.mx-evbtns{display:flex;gap:8px;align-items:center;margin-top:8px}
+.mx-evact{display:flex;gap:4px}
+.mx-ev.editing,.mx-evf.editing{outline:2px solid var(--yellow);border-radius:10px}
+.mx-evf.editing{padding:6px}

@@ -60,16 +60,8 @@ export function scorePick(pick, chip, g, byId, formations) {
   const subs = [];
   if (chip === 'bb') {
     active = [...pick.starters, ...pick.bench];
-  } else if (g.final) {
-    pick.bench.forEach((b) => {
-      if (!did(b)) return;
-      for (let i = 0; i < active.length; i++) {
-        if (did(active[i])) continue;
-        const test = active.map((x, j) => (j === i ? b : x));
-        if (legalFormation(test, byId, formations)) { subs.push({ out: active[i], in: b }); active = test; break; }
-      }
-    });
   }
+  // الاحتياط ما ياخذ نقاط أبدًا (بدون تبديل تلقائي)، إلا مع رقاقة مضاعفة الدكة
 
   let cap = null;
   if (active.includes(pick.captain) && (!g.final || did(pick.captain))) cap = pick.captain;
