@@ -10,8 +10,8 @@ import {
 
 import {
   SC, num, breakdown, sumObj, matchPts, totalPts, roundMatches, roundPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
-} from './game.js?v=20261122b';
-import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261122b';
+} from './game.js?v=20261122c';
+import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261122c';
 
 // ---------- سجل التعديلات: كل حفظ أو حذف من المشرفين ينكتب في logs ----------
 const NO_LOG = /^(logs|leagues)\/|\/(picks|preds|votes|comments)\//;
@@ -400,6 +400,12 @@ function pfStatsGrid(p) {
   card.append(g, el('div', 'pf-foot', 'الترتيب بين ' + POS_PL[p.position]));
   return card;
 }
+// شعار الفريق الخصم (من تبويب الفرق) أو أول حرف
+function crestEl(name) {
+  const c = el('div', 'pf-crest'); const l = name ? (S.clubs.get(name) || {}).logo : null;
+  if (l) { const i = new Image(); i.src = l; i.alt = ''; c.appendChild(i); c.classList.add('img'); } else c.textContent = initialOf(name || '؟');
+  return c;
+}
 function pfFormFixtures(p) {
   const card = el('div', 'pf-card pf-two');
   // الفورم: آخر مباراة
@@ -407,7 +413,7 @@ function pfFormFixtures(p) {
   const last = [...(p.matches || [])].sort((a, b) => b.round - a.round)[0];
   if (last) {
     const it = el('div', 'pf-item');
-    it.append(el('div', 'pf-rd', 'ج' + last.round), el('div', 'pf-crest', initialOf(last.opp)),
+    it.append(el('div', 'pf-rd', 'ج' + last.round), crestEl(last.opp),
       el('div', 'pf-opp', last.opp), el('div', 'pf-h', homeTxt(last.home)),
       el('div', 'pf-ptschip', matchPts(p.position, last) + ' نقطة'));
     f.appendChild(it);
@@ -421,7 +427,7 @@ function pfFormFixtures(p) {
       const it = el('div', 'pf-item');
       const [bg, fg] = DIFF_COL[m.diff] || DIFF_COL[3];
       const d = el('div', 'pf-diff', String(m.diff || 3)); d.style.background = bg; d.style.color = fg;
-      it.append(el('div', 'pf-rd', 'ج' + m.round), el('div', 'pf-crest', initialOf(m.opp)),
+      it.append(el('div', 'pf-rd', 'ج' + m.round), crestEl(m.opp),
         el('div', 'pf-opp', m.opp), el('div', 'pf-h', homeTxt(m.home)), d);
       row.appendChild(it);
     });

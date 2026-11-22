@@ -703,3 +703,4 @@ body .potw.clickable{padding-inline-end:44px}
 .mx-evact{display:flex;gap:4px}
 .mx-ev.editing,.mx-evf.editing{outline:2px solid var(--yellow);border-radius:10px}
 .mx-evf.editing{padding:6px}
+.pf-crest.img{background:#fff;overflow:hidden}.pf-crest img{width:100%;height:100%;object-fit:contain;padding:3px}
