@@ -709,3 +709,16 @@ body .potw.clickable{padding-inline-end:44px}
 .tm-owner{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.12);border-radius:999px;padding:3px 10px 3px 3px;font-size:13px;font-weight:700}
 .tm-gav{width:26px;height:26px;border-radius:50%;overflow:hidden;background:#dfe7f5;color:#1d2f5d;display:grid;place-items:center;font-size:12px;font-weight:900;flex:none}
 .tm-gav img{width:100%;height:100%;object-fit:cover}
+
+/* الجولة */
+.totw-sel{max-width:260px;margin-bottom:8px}
+.totw-sec{margin-bottom:18px}
+.totw-sub{font-size:12px;color:var(--muted)}
+.totw-vh{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}
+.lu-sc{margin-top:3px;background:rgba(0,0,0,.45);color:var(--yellow);font-size:11px;font-weight:900;padding:1px 7px;border-radius:999px;white-space:nowrap}
+.totw-mgr{display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,#3b2a7a,#1f4e86);color:#fff;border-radius:12px;padding:10px 12px;font-size:13px}
+.totw-mgr b{flex:1;font-size:15px}.totw-mp{color:var(--yellow);font-weight:900}
+.tv-h{font-weight:900;color:var(--yellow);margin:12px 0 6px;font-size:14px}
+.tv-row{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:10px;background:var(--panel2);margin-bottom:5px;cursor:pointer;border:1px solid transparent}
+.tv-row.on{border-color:var(--yellow)}.tv-row input{width:18px;height:18px;accent-color:#2e7d32;flex:none;margin:0}
+.tv-row .rs-n{flex:1}

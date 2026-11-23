@@ -9,12 +9,12 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 import {
-  SC, num, breakdown, sumObj, matchPts, totalPts, roundMatches, roundPts, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
-} from './game.js?v=20261122f';
-import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261122f';
+  SC, num, breakdown, sumObj, matchPts, totalPts, roundMatches, roundPts, legalFormation, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
+} from './game.js?v=20261123a';
+import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261123a';
 
 // ---------- سجل التعديلات: كل حفظ أو حذف من المشرفين ينكتب في logs ----------
-const NO_LOG = /^(logs|leagues)\/|\/(picks|preds|votes|comments)\//;
+const NO_LOG = /^(logs|leagues|totw)\/|\/(picks|preds|votes|comments)\//;
 function logLabel(path, data) {
   const [c, id] = path.split('/');
   const nm = (x) => (x && x.name) || '';
@@ -800,7 +800,8 @@ async function openTeamModal(r) {
 document.querySelectorAll('.tab').forEach((t) => t.onclick = () => {
   document.querySelectorAll('.tab').forEach((x) => x.classList.toggle('active', x === t));
   const k = t.dataset.tab;
-  $('#tab-pick').hidden = k !== 'pick'; $('#tab-table').hidden = k !== 'table'; $('#tab-cup').hidden = k !== 'cup'; $('#tab-clubs').hidden = k !== 'clubs'; $('#tab-matches').hidden = k !== 'matches';
+  $('#tab-pick').hidden = k !== 'pick'; $('#tab-table').hidden = k !== 'table'; $('#tab-cup').hidden = k !== 'cup'; $('#tab-clubs').hidden = k !== 'clubs'; $('#tab-matches').hidden = k !== 'matches'; $('#tab-totw').hidden = k !== 'totw';
+  if (k === 'totw') renderTotw();
   if (k === 'clubs') renderClubs();
   if (k === 'matches') renderMatches();
   if (k === 'table') renderStandings();
@@ -2693,3 +2694,131 @@ function gInfo() {
   const o = {}; if (u.displayName) o.gName = u.displayName.slice(0, 80); if (u.photoURL && u.photoURL.length <= 600) o.gPhoto = u.photoURL;
   return o;
 }
+
+
+// ---------- الجولة: فريق الجولة (فانتازي) + تشكيلة الجولة بالتصويت ----------
+let totwN = null; const TOTW = {};
+const FORMS = () => Object.entries(S.rules.formations);
+// أفضل تشكيلة حسب دالة تقييم (نقاط أو أصوات) ضمن الخطط المسموحة
+function bestXI(cands, score) {
+  const by = { gk: [], def: [], mid: [], fwd: [] };
+  cands.forEach((p) => by[p.position] && by[p.position].push(p));
+  Object.values(by).forEach((l) => l.sort((x, y) => score(y) - score(x)));
+  let best = null;
+  FORMS().forEach(([name, f]) => {
+    if (ORDER.some((k) => by[k].length < f[k])) return;
+    const ids = ORDER.flatMap((k) => by[k].slice(0, f[k]));
+    const tot = ids.reduce((s, p) => s + score(p), 0);
+    if (!best || tot > best.tot) best = { name, ids, tot };
+  });
+  return best;
+}
+function pitchOf(list, badge) {
+  const box = el('div', 'lu');
+  ORDER.forEach((k) => {
+    const ps = list.filter((p) => p.position === k); if (!ps.length) return;
+    const row = el('div', 'lu-row');
+    ps.forEach((p) => { const c = el('div', 'lu-p clickable'); c.append(avatar(p, 'lu-av'), el('div', 'lu-n', p.name), el('div', 'lu-sc', badge(p))); c.onclick = () => openProfile(p.id); row.appendChild(c); });
+    box.appendChild(row);
+  });
+  return box;
+}
+async function renderTotw() {
+  const box = $('#totwBody'); box.innerHTML = '';
+  const now = Date.now();
+  const gs = [...S.gws].filter((g) => g.deadline <= now).sort((x, y) => y.n - x.n);
+  if (!gs.length) { box.appendChild(el('div', 'empty-msg', 'يظهر فريق الجولة بعد بداية أول جولة.')); return; }
+  if (!gs.some((g) => g.n === totwN)) totwN = gs[0].n;
+  const sel = el('select', 'totw-sel');
+  gs.forEach((g) => { const o = document.createElement('option'); o.value = g.n; o.textContent = gwLabel(g); sel.appendChild(o); });
+  sel.value = totwN; sel.onchange = () => { totwN = Number(sel.value); renderTotw(); };
+  box.appendChild(sel);
+  const n = totwN; const g = gs.find((x) => x.n === n);
+  const played = S.players.filter((p) => roundMatches(p, n).some((m) => num(m.min) > 0));
+
+  // 1) فريق الجولة في الفانتازي (أعلى النقاط)
+  const s1 = el('div', 'totw-sec');
+  s1.appendChild(el('h3', 'mt-h', '🏆 فريق الجولة في الفانتازي'));
+  const dt = bestXI(played, (p) => roundPts(p, n));
+  if (!dt) s1.appendChild(el('div', 'empty-msg', 'تظهر بعد تسجيل نتائج مباريات هذه الجولة.'));
+  else {
+    s1.appendChild(el('div', 'totw-sub', `الخطة ${dt.name} · مجموع ${dt.tot} نقطة`));
+    s1.appendChild(pitchOf(dt.ids, (p) => `${roundPts(p, n)} ن`));
+  }
+  // أفضل مدرب في الجولة
+  const rows = S.admin ? [] : tableRows();
+  const src = S.admin && S.table ? ((S.table.rows || []).map((x) => ({ name: x.name, v: (x.g || {})[n] ? x.g[n][0] : null }))) : rows.map((x) => ({ name: x.t.name, v: x.tt.perGw[n] ? x.tt.perGw[n].net : null }));
+  const top = src.filter((x) => x.v != null).sort((x, y) => y.v - x.v)[0];
+  if (top) { const c = el('div', 'totw-mgr'); c.append(el('span', null, '👑 أفضل مدرب في الجولة'), el('b', null, top.name), el('span', 'totw-mp', `${top.v} نقطة`)); s1.appendChild(c); }
+  box.appendChild(s1);
+
+  // 2) تشكيلة الجولة بتصويت الجمهور
+  const s2 = el('div', 'totw-sec');
+  s2.appendChild(el('h3', 'mt-h', '🗳️ تشكيلة الجولة (تصويت الجمهور)'));
+  box.appendChild(s2);
+  if (!TOTW[n]) {
+    s2.appendChild(el('div', 'empty-msg', 'جاري التحميل…'));
+    try { const d = await getDoc(doc(S.db, 'totw', String(n))); TOTW[n] = d.exists() ? (d.data().votes || {}) : {}; }
+    catch (e) { s2.innerHTML = ''; s2.appendChild(el('div', 'err', errText(e))); return; }
+    if (totwN === n && !$('#tab-totw').hidden) renderTotw(); return;
+  }
+  const votes = TOTW[n]; const voters = Object.keys(votes).length;
+  const cnt = {}; Object.values(votes).forEach((v) => (v.ids || []).forEach((id) => { cnt[id] = (cnt[id] || 0) + 1; }));
+  const mine = S.uid && votes[S.uid];
+  const vb = el('button', 'btn primary sm', mine ? '✏️ عدّل تصويتك' : '🗳️ صوّت لتشكيلتك'); vb.type = 'button';
+  vb.onclick = () => { if (!S.uid) { toast('سجّل دخول بقوقل عشان تصوّت'); googleLogin(); return; } openTotwVote(n, played); };
+  const hd = el('div', 'totw-vh'); hd.append(el('span', 'totw-sub', `عدد المصوّتين: ${voters}`), vb); s2.appendChild(hd);
+  const vcands = S.players.filter((p) => cnt[p.id]);
+  const vt = voters ? bestXI(vcands, (p) => cnt[p.id] || 0) : null;
+  if (!vt) s2.appendChild(el('div', 'empty-msg', voters ? 'الأصوات ما تكمّل تشكيلة كاملة بعد.' : 'ما أحد صوّت بعد. كن أول واحد!'));
+  else s2.appendChild(pitchOf(vt.ids, (p) => `${Math.round((cnt[p.id] / voters) * 100)}% (${cnt[p.id]})`));
+  if (mine) s2.appendChild(el('div', 'totw-sub', '✅ صوّتّ في هذي الجولة'));
+}
+let tvN = null, tvSel = [];
+function openTotwVote(n, played) {
+  tvN = n; const mine = (TOTW[n] || {})[S.uid];
+  tvSel = mine ? [...mine.ids] : [];
+  const fsel = $('#tvForm'); fsel.innerHTML = '';
+  FORMS().forEach(([k]) => { const o = document.createElement('option'); o.value = k; o.textContent = k; fsel.appendChild(o); });
+  fsel.value = mine && S.rules.formations[mine.f] ? mine.f : FORMS()[0][0];
+  const cands = played.length ? played : S.players;
+  const draw = () => {
+    const f = S.rules.formations[fsel.value];
+    tvSel = tvSel.filter((id) => S.byId.get(id));
+    const box = $('#tvList'); box.innerHTML = '';
+    ORDER.forEach((k) => {
+      const ps = cands.filter((p) => p.position === k).sort((x, y) => roundPts(y, n) - roundPts(x, n));
+      if (!ps.length) return;
+      const have = tvSel.filter((id) => S.byId.get(id).position === k).length;
+      box.appendChild(el('div', 'tv-h', `${POS_PL[k]} (${have}/${f[k]})`));
+      ps.forEach((p) => {
+        const on = tvSel.includes(p.id);
+        const r = el('label', 'tv-row' + (on ? ' on' : ''));
+        const cb = el('input'); cb.type = 'checkbox'; cb.checked = on;
+        cb.onchange = () => {
+          if (cb.checked) { if (have >= f[k]) { cb.checked = false; toast(`الخطة ${fsel.value} فيها ${f[k]} فقط من ${POS_PL[k]}`, true); return; } tvSel.push(p.id); }
+          else tvSel = tvSel.filter((x) => x !== p.id);
+          draw();
+        };
+        r.append(cb, avatar(p, 'club-av'), el('b', 'rs-n', p.name), el('span', 'ev-ps', `${p.club || ''} · ${roundPts(p, n)} ن`));
+        box.appendChild(r);
+      });
+    });
+    const need = ORDER.reduce((s, k) => s + f[k], 0);
+    $('#tvCount').textContent = `اخترت ${tvSel.length} من ${need}`;
+    $('#tvSave').disabled = !legalFormation(tvSel, S.byId, { x: f });
+  };
+  fsel.onchange = () => { const f = S.rules.formations[fsel.value]; ORDER.forEach((k) => { const ids = tvSel.filter((id) => S.byId.get(id).position === k); if (ids.length > f[k]) tvSel = tvSel.filter((id) => !ids.slice(f[k]).includes(id)); }); draw(); };
+  $('#tvErr').textContent = ''; draw(); openModal('#totwModal');
+}
+$('#tvSave').onclick = async () => {
+  const f = $('#tvForm').value;
+  if (!legalFormation(tvSel, S.byId, { x: S.rules.formations[f] })) { $('#tvErr').textContent = 'كمّل التشكيلة حسب الخطة'; return; }
+  const v = { ids: [...tvSel], f, at: Date.now() };
+  $('#tvSave').disabled = true;
+  try {
+    await fsSetDoc(doc(S.db, 'totw', String(tvN)), { votes: { [S.uid]: v } }, { merge: true });
+    TOTW[tvN] = { ...(TOTW[tvN] || {}), [S.uid]: v };
+    closeModal('#totwModal'); toast('تم تسجيل تصويتك ✅'); renderTotw();
+  } catch (e) { $('#tvSave').disabled = false; $('#tvErr').textContent = errText(e); }
+};

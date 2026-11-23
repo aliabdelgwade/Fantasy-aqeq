@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="Aqeq League">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=20261122f">
+<link rel="stylesheet" href="styles.css?v=20261123a">
 </head>
 <body>
 <header class="topbar">
@@ -49,6 +49,7 @@
     <button class="tab" data-tab="table">ترتيب الدوري</button>
     <button class="tab" data-tab="clubs">الفرق</button>
     <button class="tab" data-tab="matches">المباريات</button>
+    <button class="tab" data-tab="totw">⭐ الجولة</button>
     <button class="tab" data-tab="cup">🏆 البطولة</button>
     <button class="gw-btn" id="gwAdmin" type="button" hidden>⚙️ إدارة الجولات</button>
     <button class="gw-btn" id="annAdmin" type="button" hidden>📢 الإعلان</button>
@@ -112,6 +113,11 @@
     <h2>الفرق</h2>
     <div id="clubsBody"></div>
     <input type="file" id="clubFile" accept="image/*" hidden>
+  </section>
+
+  <section id="tab-totw" class="panel table-panel" hidden>
+    <h2>⭐ الجولة</h2>
+    <div id="totwBody"></div>
   </section>
 
   <section id="tab-matches" class="panel table-panel" hidden>
@@ -373,6 +379,20 @@
   </form>
 </div>
 
+<!-- تصويت تشكيلة الجولة -->
+<div class="overlay" id="totwModal" role="dialog" aria-modal="true">
+  <div class="modal">
+    <div class="m-head"><h3>🗳️ تشكيلة الجولة</h3><button type="button" class="x" data-close>✕</button></div>
+    <div class="m-body">
+      <label for="tvForm">الخطة</label><select id="tvForm"></select>
+      <p class="hint">اختر أفضل لاعبين في الجولة حسب الخطة. تقدر تعدّل تصويتك بعدين.</p>
+      <div id="tvList"></div>
+      <div class="err" id="tvErr"></div>
+      <div class="actions sticky"><button class="btn primary" type="button" id="tvSave">حفظ التصويت</button><span class="totw-sub" id="tvCount"></span><button class="btn ghost" type="button" data-close>إغلاق</button></div>
+    </div>
+  </div>
+</div>
+
 <!-- سجل التعديلات -->
 <div class="overlay" id="logModal" role="dialog" aria-modal="true">
   <div class="modal">
@@ -458,6 +478,6 @@
 <div class="loading" id="loading"><div class="spin"></div><b>انتظر قليلًا، يتم تحميل بياناتك وفريقك…</b></div>
 
 <div class="toast" id="toast"></div>
-<script type="module" src="app.js?v=20261122f"></script>
+<script type="module" src="app.js?v=20261123a"></script>
 </body>
 </html>

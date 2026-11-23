@@ -156,6 +156,25 @@ service cloud.firestore {
           || (oldL.hasAll(newL) && newL.size() == oldL.size() - 1 && oldL.hasAny([request.auth.uid]) && !newL.hasAny([request.auth.uid]));
     }
 
+    // تشكيلة الجولة بالتصويت: ملف واحد لكل جولة، وكل حساب يعدّل صوته هو فقط بعد بداية الجولة
+    function validVote(v) {
+      return v.keys().hasOnly(['ids', 'f', 'at']) && v.ids is list && v.ids.size() >= 1 && v.ids.size() <= 11
+        && v.f is string && v.f.size() <= 10 && v.at is int;
+    }
+    function gwStarted(n) {
+      return get(/databases/$(database)/documents/gameweeks/$(n)).data.deadline < request.time.toMillis();
+    }
+    match /totw/{n} {
+      allow read: if true;
+      allow delete: if isAdmin();
+      allow create: if request.auth != null && request.resource.data.keys().hasOnly(['votes'])
+                   && request.resource.data.votes.keys().hasOnly([request.auth.uid])
+                   && validVote(request.resource.data.votes[request.auth.uid]) && gwStarted(n);
+      allow update: if request.auth != null && request.resource.data.keys().hasOnly(['votes'])
+                   && request.resource.data.votes.diff(resource.data.votes).affectedKeys().hasOnly([request.auth.uid])
+                   && validVote(request.resource.data.votes[request.auth.uid]) && gwStarted(n);
+    }
+
     // الإعلان وشكل الموقع: الكل يقرأ والمشرفة فقط تكتب
     match /site/{id} {
       allow read: if true;
