@@ -59,7 +59,10 @@ service cloud.firestore {
     function validPick(d) {
       let s = d.starters;
       let b = d.bench;
-      return d.keys().hasOnly(['formation', 'starters', 'bench', 'captain', 'vice', 'chip', 'updatedAt'])
+      return d.keys().hasOnly(['formation', 'starters', 'bench', 'captain', 'vice', 'chip', 'updatedAt', 'bp', 'bank', 'adjAt'])
+        && (!('bp' in d) || (d.bp is map && d.bp.size() <= 6))
+        && (!('bank' in d) || (d.bank is number && d.bank >= 0 && d.bank <= 100))
+        && (!('adjAt' in d) || d.adjAt is int)
         && d.formation in ['2-1-1', '1-2-1', '1-1-2']
         && s is list && s.size() == 5 && b is list && b.size() == 1
         && s.concat(b).toSet().size() == 6
@@ -173,6 +176,15 @@ service cloud.firestore {
       allow update: if request.auth != null && request.resource.data.keys().hasOnly(['votes'])
                    && request.resource.data.votes.diff(resource.data.votes).affectedKeys().hasOnly([request.auth.uid])
                    && validVote(request.resource.data.votes[request.auth.uid]) && gwStarted(n);
+    }
+
+    // تعديل ميزانية مشارك في الفانتازي: المشرفة فقط تكتب
+    match /budget/{uid} {
+      allow read: if true;
+      allow delete: if isAdmin();
+      allow create, update: if isAdmin() && request.resource.data.keys().hasOnly(['add', 'at'])
+                   && request.resource.data.add is number && request.resource.data.add >= -50 && request.resource.data.add <= 50
+                   && request.resource.data.at is int;
     }
 
     // الإعلان وشكل الموقع: الكل يقرأ والمشرفة فقط تكتب

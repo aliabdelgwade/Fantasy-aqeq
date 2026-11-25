@@ -10,8 +10,8 @@ import {
 
 import {
   SC, num, breakdown, sumObj, matchPts, totalPts, roundMatches, roundPts, legalFormation, timeline, teamTotals, netTransfers, priceChanges, CHIPS, CHIP_MAX, HIT, STAGES, PRESET, gwLabel, isOff,
-} from './game.js?v=20261123a';
-import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261123a';
+} from './game.js?v=20261125a';
+import { KO, KO_NAMES, TWO_LEG, agg, standings, winner, resolveKo } from './cup.js?v=20261125a';
 
 // ---------- سجل التعديلات: كل حفظ أو حذف من المشرفين ينكتب في logs ----------
 const NO_LOG = /^(logs|leagues|totw)\/|\/(picks|preds|votes|comments)\//;
@@ -25,6 +25,7 @@ function logLabel(path, data) {
   if (c === 'gameweeks') return 'الجولة ' + id;
   if (c === 'teams') return 'فريق فانتازي: ' + (nm(data) || nm(S.teams && S.teams.get(id)) || id);
   if (c === 'site') return 'الإعلان وإعدادات الموقع';
+  if (c === 'budget') return 'ميزانية: ' + (nm(S.teams && S.teams.get(id)) || id);
   return path;
 }
 function writeLog(act, path, data) {
@@ -95,14 +96,36 @@ function emptySlots(formation) {
 }
 const picked = () => [...ORDER.flatMap((k) => S.slots[k]), ...S.bench].filter(Boolean);
 const isPicked = (id) => picked().includes(id);
-const cost = () => picked().reduce((s, id) => s + (S.byId.get(id)?.price || 0), 0);
-const squadValue = (ids) => ids.reduce((s, id) => s + (S.byId.get(id)?.price || 0), 0);
-const budgetCap = () => (S.base ? Math.max(S.rules.budget, squadValue(S.base.squad)) : S.rules.budget);
+// الميزانية بسعر الشراء: اللاعب اللي عندك يظل بالسعر اللي اشتريته فيه حتى لو سعره زاد أو نقص
+const r1 = (x) => Math.round(x * 10) / 10;
+const curPrice = (id) => S.byId.get(id)?.price || 0;
+function refPick(uid) {
+  uid = uid || S.uid;
+  const mine = (uid && S.allPicks[uid]) || {};
+  if (S.openGw && mine[S.openGw.n]) return mine[S.openGw.n];
+  const ns = Object.keys(mine).map(Number).filter((n) => !S.openGw || n < S.openGw.n).sort((x, y) => y - x);
+  for (const n of ns) if (mine[n] && mine[n].chip !== 'fh') return mine[n];
+  return null;
+}
+// تعديل الميزانية من المشرفة: يضاف مرة وحدة (ينحفظ وقته في التشكيلة أول ما يحفظ اللاعب)
+const adjOf = (p, adj) => (adj && Number.isFinite(adj.add) && adj.at > ((p && p.adjAt) || 0) ? adj.add : 0);
+function owned(uid, adj) {
+  uid = uid || S.uid; adj = adj === undefined ? S.adj : adj;
+  const p = refPick(uid); if (!p) return { own: {}, bank: r1(S.rules.budget + adjOf(null, adj)) };
+  const own = {};
+  [...(p.starters || []), ...(p.bench || [])].forEach((id) => { own[id] = p.bp && Number.isFinite(p.bp[id]) ? p.bp[id] : curPrice(id); });
+  let bank = Number.isFinite(p.bank) ? p.bank : Math.max(0, r1(S.rules.budget - Object.values(own).reduce((s, v) => s + v, 0)));
+  bank = r1(bank + adjOf(p, adj));
+  return { own, bank };
+}
+const priceOf = (id, o) => { o = o || owned(); return Number.isFinite(o.own[id]) ? o.own[id] : curPrice(id); };
+const cost = () => { const o = owned(); return r1(picked().reduce((s, id) => s + priceOf(id, o), 0)); };
+const budgetCap = () => { const o = owned(); return r1(o.bank + Object.values(o.own).reduce((s, v) => s + v, 0)); };
 const totalSlots = () => S.rules.starters + S.rules.bench;
 const clubCount = (club) => picked().filter((id) => S.byId.get(id)?.club === club).length;
 
 function canAfford(p) {
-  if (cost() + p.price > budgetCap() + 1e-9) { toast('الميزانية لا تكفي لهذا اللاعب', true); return false; }
+  if (cost() + priceOf(p.id) > budgetCap() + 1e-9) { toast('الميزانية لا تكفي لهذا اللاعب', true); return false; }
   if (clubCount(p.club) >= S.rules.maxPerClub) { toast(`الحد الأقصى ${S.rules.maxPerClub} لاعبين من ${p.club}`, true); return false; }
   return true;
 }
@@ -690,11 +713,12 @@ $('#saveTeam').onclick = async () => {
   const btn = $('#saveTeam'); btn.disabled = true;
   try {
     const now = Date.now();
-    const old = S.teams.get(S.uid);
+    const old = S.teams.get(S.uid); const o0 = owned();
     await setDoc(doc(S.db, 'teams', S.uid), { name, createdAt: old?.createdAt || now, updatedAt: now, ...gInfo() });
     await setDoc(doc(S.db, 'gameweeks', String(n), 'picks', S.uid), {
       formation: S.formation, starters: ORDER.flatMap((k) => S.slots[k]), bench: S.bench,
       captain: S.captain, vice: S.vice, chip: S.chip || null, updatedAt: now,
+      bp: Object.fromEntries(picked().map((id) => [id, priceOf(id, o0)])), bank: Math.max(0, r1(budgetCap() - cost())), ...(S.adj && S.adj.at ? { adjAt: S.adj.at } : {}),
     });
     S.hasTeam = true;
     if (S.admin) await loadPicks(true); else { mineT = 0; await loadMine(); computeBase(); }
@@ -763,6 +787,29 @@ async function openTeamModal(r) {
   }
   const body = $('#teamBody'); body.innerHTML = '';
   $('#tmTitle').textContent = r.t.name;
+  if (S.admin) {
+    const bw = el('div', 'tm-budget'); body.appendChild(bw);
+    (async () => {
+      let adj = null; try { const d = await getDoc(doc(S.db, 'budget', r.uid)); adj = d.exists() ? d.data() : null; } catch (e) { /* */ }
+      if (!S.allPicks[r.uid]) { try { await fetchUserPicks(r.uid); } catch (e) { /* */ } }
+      const o = owned(r.uid, adj);
+      const cap = r1(o.bank + Object.values(o.own).reduce((s, v) => s + v, 0));
+      const left = r1(cap - Object.values(o.own).reduce((s, v) => s + v, 0));
+      const pend = adjOf(refPick(r.uid), adj);
+      bw.innerHTML = '';
+      bw.append(el('span', null, `💰 المتبقي له: ${money(left)}${pend ? ` (منها تعديل ${pend > 0 ? '+' : ''}${money(pend)} ما استخدمه بعد)` : ''}`));
+      const b = el('button', 'btn ghost sm', 'تعديل الميزانية'); b.type = 'button';
+      b.onclick = async () => {
+        const v = prompt(`كم تبين تضيفين لميزانية «${r.t.name}»؟\nمثال: 0.5 أو 1 (وللخصم اكتبي بالسالب مثل -0.5)`, '');
+        if (v == null || v.trim() === '') return;
+        const add = r1(Number(v.replace(',', '.')));
+        if (!Number.isFinite(add) || add === 0 || Math.abs(add) > 50) { toast('اكتبي رقم صحيح', true); return; }
+        try { await setDoc(doc(S.db, 'budget', r.uid), { add: r1(add + (pend || 0)), at: Date.now() }); toast('تم تعديل الميزانية ✅'); openTeamModal(r); }
+        catch (e) { toast(errText(e), true); }
+      };
+      bw.appendChild(b);
+    })();
+  }
   const tinfo = (S.teams.get(r.uid)) || r.t;
   if (tinfo.gName || tinfo.gPhoto) {
     const ow = el('div', 'tm-owner');
@@ -1248,9 +1295,10 @@ async function loadMine() {
   if (!S.uid || !S.gws.length) { mineFor = S.uid || null; return; }
   const uid = S.uid;
   try {
-    const [t, ...ps] = await Promise.all([getDoc(doc(S.db, 'teams', uid)),
+    const [t, ad, ...ps] = await Promise.all([getDoc(doc(S.db, 'teams', uid)), getDoc(doc(S.db, 'budget', uid)).catch(() => null),
       ...S.gws.map((g) => getDoc(doc(S.db, 'gameweeks', String(g.n), 'picks', uid)))]);
     if (uid !== S.uid) return;
+    S.adj = ad && ad.exists() ? ad.data() : null;
     if (t.exists()) {
       const td = t.data(); S.teams.set(uid, td);
       const gi = gInfo();

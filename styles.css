@@ -722,3 +722,4 @@ body .potw.clickable{padding-inline-end:44px}
 .tv-row{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:10px;background:var(--panel2);margin-bottom:5px;cursor:pointer;border:1px solid transparent}
 .tv-row.on{border-color:var(--yellow)}.tv-row input{width:18px;height:18px;accent-color:#2e7d32;flex:none;margin:0}
 .tv-row .rs-n{flex:1}
+.tm-budget{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;background:var(--panel2);border:1px solid var(--yellow);border-radius:10px;padding:8px 10px;margin-bottom:10px;font-size:13px;font-weight:700}
